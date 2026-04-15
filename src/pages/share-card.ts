@@ -1,3 +1,5 @@
+import { escapeHtml } from '../lib/security';
+
 /**
  * Share card HTML — rendered at a URL, then screenshotted to PNG via
  * Cloudflare Browser Rendering for OG images.
@@ -18,7 +20,15 @@ interface ShareCardInput {
   brand: 'stockpitch' | 'levincap';
 }
 
-export function renderShareCardHTML(input: ShareCardInput): string {
+export function renderShareCardHTML(inputIn: ShareCardInput): string {
+  // Escape user-supplied strings
+  const input: ShareCardInput = {
+    ...inputIn,
+    ticker: escapeHtml(inputIn.ticker),
+    company: inputIn.company ? escapeHtml(inputIn.company) : null,
+    display_name: escapeHtml(inputIn.display_name),
+    rating: escapeHtml(inputIn.rating),
+  };
   const isLevin = input.brand === 'levincap';
   const accent = isLevin ? '#B8973E' : '#2EBD6B';
   const bg = isLevin ? '#FAF7F0' : '#0A0F1F';

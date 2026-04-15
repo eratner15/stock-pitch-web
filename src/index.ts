@@ -7,14 +7,16 @@ import { renderLeaderboard, initialsFrom, daysBetween, type LeaderboardRow } fro
 import { renderCallDetail } from './pages/call-detail';
 import { renderShareCardHTML } from './pages/share-card';
 import { PORTFOLIO } from './portfolio';
-import { fetchPrice, calcReturn } from './lib/prices';
+import { fetchPrice, fetchPriceStrict, calcReturn } from './lib/prices';
 import { generateBrief } from './lib/ai-brief';
+import { escapeHtml, isValidEmail, sanitizeTicker, checkRateLimit, newId } from './lib/security';
 
 interface Env {
   DB: D1Database;
   REQUESTS: KVNamespace;
   AI: any;
   BROWSER: Fetcher;
+  ADMIN_KEY?: string;
   FMP_API_KEY?: string;
   ENVIRONMENT: string;
 }
@@ -62,7 +64,7 @@ app.get('/submit', (c) => c.html(renderSubmitV2(c.get('brand'))));
 app.get('/leaderboard', async (c) => {
   const brand = c.get('brand');
   try {
-    const rows = await buildLeaderboard(c.env);
+    const rows = await buildLeaderboard(c.env, brand);
     return c.html(renderLeaderboard(rows, brand));
   } catch (err) {
     console.error('Leaderboard error:', err);
@@ -84,9 +86,14 @@ app.get('/c/:id', async (c) => {
     JOIN users u ON u.id = c.user_id
     LEFT JOIN prices p ON p.ticker = c.ticker
     WHERE c.id = ?
-  `).bind(id).first<any>();
+  `).bind(id).first<CallRow>();
 
   if (!call) return c.text('Call not found', 404);
+
+  // Fallbacks for nullable fields so the renderer never hits undefined
+  const displayName = call.display_name ?? 'Anonymous';
+  const thesis = call.thesis ?? '';
+  const horizon = call.time_horizon_months ?? 12;
 
   // Try to pull cached brief from KV; if none, generate on the fly
   let brief = await c.env.REQUESTS.get(`brief:${id}`);
@@ -98,21 +105,21 @@ app.get('/c/:id', async (c) => {
       rating: call.rating,
       entry_price: call.entry_price,
       price_target: call.price_target,
-      time_horizon_months: call.time_horizon_months,
-      thesis: call.thesis,
-      display_name: call.display_name,
+      time_horizon_months: horizon,
+      thesis,
+      display_name: displayName,
     });
-    // Cache for future views
     try {
       await c.env.REQUESTS.put(`brief:${id}`, brief, { expirationTtl: 30 * 86400 });
-    } catch (e) {}
+    } catch (e) {
+      console.error('brief cache write failed', e);
+    }
   }
 
-  // Compute return if we have current price
   let returnPct = 0;
-  let currentPrice = call.current_price as number | null;
+  let currentPrice = call.current_price;
   if (currentPrice == null) {
-    const quote = await fetchPrice(call.ticker, c.env.FMP_API_KEY);
+    const quote = await fetchPrice(call.ticker);
     if (quote) {
       currentPrice = quote.price;
       try {
@@ -140,10 +147,10 @@ app.get('/c/:id', async (c) => {
     current_price: currentPrice,
     price_target: call.price_target,
     entry_date: call.entry_date,
-    time_horizon_months: call.time_horizon_months,
-    thesis: call.thesis,
+    time_horizon_months: horizon,
+    thesis,
     catalyst: call.catalyst,
-    display_name: call.display_name,
+    display_name: displayName,
     brief_markdown: brief,
     days_held: daysHeld,
     return_pct: returnPct,
@@ -151,34 +158,69 @@ app.get('/c/:id', async (c) => {
 });
 
 // ==========================================================================
-// SHARE CARD — /c/:id/og.png (auto-generated via Browser Rendering)
+// SHARE CARD — /c/:id/og.png (via Browser Rendering, cached in KV for 24h)
 // ==========================================================================
 app.get('/c/:id/og.png', async (c) => {
   const id = c.req.param('id');
+  const cacheKey = `og:${id}`;
   const origin = getOrigin(c);
 
+  // Serve cached PNG if we have one
   try {
-    const browser = await puppeteer.launch(c.env.BROWSER);
+    const cached = await c.env.REQUESTS.get(cacheKey, 'arrayBuffer');
+    if (cached) {
+      return new Response(cached, {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=86400',
+          'X-Cache': 'HIT',
+        },
+      });
+    }
+  } catch (e) {
+    console.error('og cache read failed', e);
+  }
+
+  let browser: any = null;
+  try {
+    browser = await puppeteer.launch(c.env.BROWSER);
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 630 });
     await page.goto(`${origin}/c/${id}/card`, { waitUntil: 'networkidle0', timeout: 20000 });
     await page.evaluate(() => (document as any).fonts.ready);
-    const png = await page.screenshot({ type: 'png', fullPage: false, clip: { x: 0, y: 0, width: 1200, height: 630 } });
-    await browser.close();
+    const png = await page.screenshot({
+      type: 'png',
+      fullPage: false,
+      clip: { x: 0, y: 0, width: 1200, height: 630 },
+    });
+
+    // Cache for future requests
+    try {
+      await c.env.REQUESTS.put(cacheKey, png as ArrayBuffer, { expirationTtl: 86400 });
+    } catch (e) {
+      console.error('og cache write failed', e);
+    }
+
     return new Response(png as BodyInit, {
       headers: {
         'Content-Type': 'image/png',
-        'Cache-Control': 'public, max-age=86400',  // cache 24h
+        'Cache-Control': 'public, max-age=86400',
+        'X-Cache': 'MISS',
       },
     });
   } catch (err) {
     console.error('OG generation error:', err);
     return c.text('Share card unavailable', 500);
+  } finally {
+    // Always close browser to prevent resource leaks
+    if (browser) {
+      try { await browser.close(); } catch (e) {}
+    }
   }
 });
 
 // ==========================================================================
-// SHARE CARD HTML — the thing the browser renders before screenshot
+// SHARE CARD HTML — rendered as a page so Browser Rendering can screenshot it
 // ==========================================================================
 app.get('/c/:id/card', async (c) => {
   const id = c.req.param('id');
@@ -188,7 +230,16 @@ app.get('/c/:id/card', async (c) => {
     FROM calls c JOIN users u ON u.id = c.user_id
     LEFT JOIN prices p ON p.ticker = c.ticker
     WHERE c.id = ?
-  `).bind(id).first<any>();
+  `).bind(id).first<{
+    ticker: string;
+    direction: 'long' | 'short';
+    rating: string;
+    entry_price: number;
+    price_target: number;
+    company: string | null;
+    display_name: string | null;
+    current_price: number | null;
+  }>();
   if (!call) return c.text('Not found', 404);
 
   const returnPct = call.current_price != null ? calcReturn(call.entry_price, call.current_price, call.direction) : 0;
@@ -202,90 +253,127 @@ app.get('/c/:id/card', async (c) => {
     current_price: call.current_price,
     price_target: call.price_target,
     return_pct: returnPct,
-    display_name: call.display_name,
+    display_name: call.display_name ?? 'Anonymous',
     brand: c.get('brand'),
   }));
 });
 
 // ==========================================================================
-// API: submit a call (now also triggers AI brief generation async)
+// API: submit a call
+// Security hardening vs v0.1.0:
+//   - server-locks entry_price (ignores client value)
+//   - rejects tickers without a real price quote (no mock fallback)
+//   - escapes user strings at render time (display_name, thesis)
+//   - rate limits per IP: 5 submissions per hour
+//   - rate limits per email: 3 submissions per hour
+//   - validates direction + rating enum values
 // ==========================================================================
 app.post('/api/calls', async (c) => {
   try {
-    const body = await c.req.json<{
-      ticker: string;
-      email: string;
-      display_name: string;
-      direction: 'long' | 'short';
-      rating: string;
-      price_target: number;
-      entry_price: number;
-      time_horizon_months?: number;
-      catalyst?: string;
-      thesis: string;
-      firm?: string;
-    }>();
-
-    if (!body.ticker || !body.email || !body.display_name || !body.direction || !body.rating) {
-      return c.json({ error: 'Missing required fields' }, 400);
+    let body: any;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
     }
-    if (!body.price_target || body.price_target <= 0) return c.json({ error: 'Price target must be positive' }, 400);
-    if (!body.entry_price || body.entry_price <= 0) return c.json({ error: 'Entry price must be positive' }, 400);
-    if (!body.thesis || body.thesis.length < 100) return c.json({ error: 'Thesis must be at least 100 characters' }, 400);
 
-    const ticker = body.ticker.toUpperCase().trim();
-    const email = body.email.trim().toLowerCase();
+    // Required fields + enum validation
+    const ticker = sanitizeTicker(body.ticker);
+    if (!ticker) return c.json({ error: 'Valid ticker required' }, 400);
+
+    if (!isValidEmail(body.email)) return c.json({ error: 'Valid email required' }, 400);
+    const email = String(body.email).trim().toLowerCase();
+
+    const displayName = String(body.display_name || '').trim().slice(0, 80);
+    if (!displayName) return c.json({ error: 'Display name required' }, 400);
+
+    const direction = String(body.direction || '').toLowerCase();
+    if (direction !== 'long' && direction !== 'short') {
+      return c.json({ error: 'Direction must be long or short' }, 400);
+    }
+
+    const rating = String(body.rating || '').toLowerCase();
+    const RATINGS = new Set(['buy', 'overweight', 'hold', 'underweight', 'sell']);
+    if (!RATINGS.has(rating)) return c.json({ error: 'Invalid rating' }, 400);
+
+    const priceTarget = Number(body.price_target);
+    if (!Number.isFinite(priceTarget) || priceTarget <= 0 || priceTarget > 1_000_000) {
+      return c.json({ error: 'Price target must be a positive number' }, 400);
+    }
+
+    const timeHorizon = Number(body.time_horizon_months) || 12;
+    const ALLOWED_HORIZONS = new Set([3, 6, 12, 18, 24, 36]);
+    if (!ALLOWED_HORIZONS.has(timeHorizon)) {
+      return c.json({ error: 'Invalid time horizon' }, 400);
+    }
+
+    const thesis = String(body.thesis || '').trim();
+    if (thesis.length < 100 || thesis.length > 5000) {
+      return c.json({ error: 'Thesis must be 100–5000 characters' }, 400);
+    }
+
+    const catalyst = body.catalyst != null ? String(body.catalyst).trim().slice(0, 120) : null;
+
+    // Rate limits — fail-open on KV error so legitimate users aren't locked out
+    const ip = c.req.header('cf-connecting-ip') || 'unknown';
+    const ipLimit = await checkRateLimit(c.env.REQUESTS, `ip:${ip}`, 5, 3600);
+    if (!ipLimit.allowed) {
+      return c.json({ error: 'Too many submissions from this network. Try again in an hour.' }, 429);
+    }
+    const emailLimit = await checkRateLimit(c.env.REQUESTS, `email:${email}`, 3, 3600);
+    if (!emailLimit.allowed) {
+      return c.json({ error: 'Too many submissions from this email. Try again in an hour.' }, 429);
+    }
+
+    // Strict price lookup — reject tickers we can't confidently quote.
+    // Allows demo-data fallback in preview env so deployed preview still works
+    // without an external price source.
+    const isPreview = c.env.ENVIRONMENT === 'preview';
+    const quote = await fetchPriceStrict(ticker, { allowDemoFallback: isPreview });
+    if (!quote) {
+      return c.json({ error: `Could not price ${ticker}. Check the symbol and try again.` }, 400);
+    }
+
     const brand = c.get('brand');
+    const userId = await upsertUser(c.env.DB, email, displayName, brand);
 
-    const userId = await upsertUser(c.env.DB, email, body.display_name.trim(), brand);
-
-    // Lock in company name too if we can
-    const priceQuote = await fetchPrice(ticker, c.env.FMP_API_KEY);
-
-    const callId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    // SERVER-SIDE ENTRY PRICE LOCK — we ignore body.entry_price entirely
+    const entryPrice = quote.price;
+    const callId = newId();
     const entryDate = new Date().toISOString();
+
     await c.env.DB.prepare(`
       INSERT INTO calls (
         id, user_id, ticker, company, direction, rating, price_target, entry_price, entry_date,
         time_horizon_months, thesis, catalyst, brand, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).bind(
-      callId,
-      userId,
-      ticker,
-      priceQuote?.company ?? null,
-      body.direction,
-      body.rating,
-      body.price_target,
-      body.entry_price,
-      entryDate,
-      body.time_horizon_months ?? 12,
-      body.thesis,
-      body.catalyst ?? null,
-      brand
+      callId, userId, ticker, quote.company, direction, rating,
+      priceTarget, entryPrice, entryDate, timeHorizon, thesis, catalyst, brand
     ).run();
 
-    if (priceQuote) {
+    // Cache the price we just used so leaderboard reads hit D1 first
+    try {
       await c.env.DB.prepare(`
         INSERT OR REPLACE INTO prices (ticker, price, change_1d, updated_at)
         VALUES (?, ?, ?, datetime('now'))
-      `).bind(ticker, priceQuote.price, priceQuote.change_1d ?? null).run();
-    }
+      `).bind(ticker, quote.price, quote.change_1d ?? null).run();
+    } catch (e) {}
 
-    // Fire-and-forget AI brief generation (cached in KV for subsequent views)
+    // Fire-and-forget AI brief generation
     c.executionCtx.waitUntil(
       (async () => {
         try {
           const brief = await generateBrief(c.env.AI, {
             ticker,
-            company: priceQuote?.company ?? null,
-            direction: body.direction,
-            rating: body.rating,
-            entry_price: body.entry_price,
-            price_target: body.price_target,
-            time_horizon_months: body.time_horizon_months ?? 12,
-            thesis: body.thesis,
-            display_name: body.display_name.trim(),
+            company: quote.company,
+            direction: direction as 'long' | 'short',
+            rating,
+            entry_price: entryPrice,
+            price_target: priceTarget,
+            time_horizon_months: timeHorizon,
+            thesis,
+            display_name: displayName,
           });
           await c.env.REQUESTS.put(`brief:${callId}`, brief, { expirationTtl: 30 * 86400 });
         } catch (err) {
@@ -294,7 +382,12 @@ app.post('/api/calls', async (c) => {
       })()
     );
 
-    return c.json({ success: true, id: callId });
+    return c.json({
+      success: true,
+      id: callId,
+      entry_price: entryPrice,
+      company: quote.company,
+    });
   } catch (err) {
     console.error('Call submit error:', err);
     return c.json({ error: 'Failed to submit call' }, 500);
@@ -302,12 +395,13 @@ app.post('/api/calls', async (c) => {
 });
 
 // ==========================================================================
-// API: price lookup (used by submit flow)
+// API: price lookup (used by submit form)
 // ==========================================================================
 app.get('/api/price', async (c) => {
-  const ticker = c.req.query('ticker')?.toUpperCase().trim();
+  const raw = c.req.query('ticker');
+  const ticker = sanitizeTicker(raw || '');
   if (!ticker) return c.json({ error: 'ticker required' }, 400);
-  const quote = await fetchPrice(ticker, c.env.FMP_API_KEY);
+  const quote = await fetchPrice(ticker);
   if (!quote) return c.json({ error: 'price unavailable' }, 404);
   return c.json(quote);
 });
@@ -316,15 +410,19 @@ app.get('/api/price', async (c) => {
 // API: leaderboard JSON
 // ==========================================================================
 app.get('/api/leaderboard', async (c) => {
-  const rows = await buildLeaderboard(c.env);
+  const rows = await buildLeaderboard(c.env, c.get('brand'));
   return c.json({ count: rows.length, rows });
 });
 
 // ==========================================================================
-// Admin endpoints
+// Admin — now requires ADMIN_KEY env secret, not hardcoded
 // ==========================================================================
 app.get('/admin/calls', async (c) => {
-  if (c.req.query('key') !== 'levin2026') return c.text('Unauthorized', 401);
+  const configured = c.env.ADMIN_KEY;
+  const supplied = c.req.header('x-admin-key') || c.req.query('key');
+  if (!configured || !supplied || supplied !== configured) {
+    return c.text('Unauthorized', 401);
+  }
   const result = await c.env.DB.prepare(`
     SELECT c.*, u.email, u.display_name
     FROM calls c JOIN users u ON u.id = c.user_id
@@ -350,10 +448,10 @@ export default {
     try {
       const tickers = await env.DB.prepare(
         'SELECT DISTINCT ticker FROM calls WHERE status = ?'
-      ).bind('open').all();
-      const list = (tickers.results ?? []) as Array<{ ticker: string }>;
+      ).bind('open').all<{ ticker: string }>();
+      const list = tickers.results ?? [];
       for (const { ticker } of list) {
-        const q = await fetchPrice(ticker, env.FMP_API_KEY);
+        const q = await fetchPrice(ticker);
         if (q) {
           await env.DB.prepare(`
             INSERT OR REPLACE INTO prices (ticker, price, change_1d, updated_at)
@@ -372,22 +470,69 @@ export default {
 // HELPERS
 // ==========================================================================
 
-async function upsertUser(db: D1Database, email: string, displayName: string, brand: string): Promise<string> {
-  const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
-  if (existing) {
-    await db.prepare(`UPDATE users SET last_seen_at = datetime('now'), display_name = COALESCE(display_name, ?) WHERE id = ?`)
-      .bind(displayName, existing.id).run();
-    return existing.id;
-  }
-  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-  await db.prepare(`
-    INSERT INTO users (id, email, display_name, brand, created_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
-  `).bind(id, email, displayName, brand).run();
-  return id;
+interface CallRow {
+  id: string;
+  ticker: string;
+  direction: 'long' | 'short';
+  rating: string;
+  entry_price: number;
+  entry_date: string;
+  price_target: number;
+  time_horizon_months: number | null;
+  thesis: string | null;
+  catalyst: string | null;
+  company: string | null;
+  display_name: string | null;
+  current_price: number | null;
 }
 
-async function buildLeaderboard(env: Env): Promise<LeaderboardRow[]> {
+/**
+ * Upsert user — race-safe via INSERT OR IGNORE + SELECT pattern. If two
+ * concurrent requests insert the same email, one wins, the other sees it
+ * via the follow-up SELECT. No 500s, no duplicate rows (email UNIQUE).
+ */
+async function upsertUser(
+  db: D1Database,
+  email: string,
+  displayName: string,
+  brand: string
+): Promise<string> {
+  const newUserId = newId();
+  try {
+    await db.prepare(`
+      INSERT OR IGNORE INTO users (id, email, display_name, brand, created_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
+    `).bind(newUserId, email, displayName, brand).run();
+  } catch (e) {
+    // INSERT OR IGNORE should never throw on conflict; log anything else
+    console.error('user insert failed', e);
+  }
+
+  // Read back — works whether we inserted or collided
+  const row = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
+  if (!row) throw new Error('user upsert race: no row found after insert');
+
+  // Touch last_seen_at + fill missing display_name
+  try {
+    await db.prepare(`
+      UPDATE users
+      SET last_seen_at = datetime('now'),
+          display_name = COALESCE(display_name, ?)
+      WHERE id = ?
+    `).bind(displayName, row.id).run();
+  } catch (e) {}
+
+  return row.id;
+}
+
+/**
+ * Build the leaderboard with deduplicated ticker price lookups.
+ * Fetch each unique ticker at most once, write prices through in a single batch.
+ */
+async function buildLeaderboard(env: Env, brand: Brand): Promise<LeaderboardRow[]> {
+  // Data is NOT brand-isolated for MVP — leaderboard is shared across brands
+  // so both variants see the same calls. Brand-scoped leaderboards would fragment
+  // the network effect before it has a chance to form.
   const result = await env.DB.prepare(`
     SELECT c.id, c.ticker, c.direction, c.rating, c.entry_price, c.entry_date,
            c.price_target, c.thesis, c.company,
@@ -405,57 +550,81 @@ async function buildLeaderboard(env: Env): Promise<LeaderboardRow[]> {
     entry_price: number;
     entry_date: string;
     price_target: number;
-    thesis: string;
+    thesis: string | null;
     company: string | null;
-    display_name: string;
+    display_name: string | null;
     email: string;
     current_price: number | null;
   }>();
 
   const raw = result.results ?? [];
-  const now = new Date().toISOString();
 
-  const enriched = await Promise.all(raw.map(async (r) => {
-    let current = r.current_price;
-    if (current == null) {
-      const q = await fetchPrice(r.ticker, env.FMP_API_KEY);
+  // Collect tickers that need a live fetch (exactly once each)
+  const tickersNeedingPrice = Array.from(new Set(
+    raw.filter(r => r.current_price == null).map(r => r.ticker)
+  ));
+
+  const fetchedPrices = new Map<string, number>();
+  if (tickersNeedingPrice.length > 0) {
+    const quotes = await Promise.all(tickersNeedingPrice.map(t => fetchPrice(t)));
+    for (let i = 0; i < tickersNeedingPrice.length; i++) {
+      const q = quotes[i];
       if (q) {
-        current = q.price;
+        fetchedPrices.set(tickersNeedingPrice[i], q.price);
+      }
+    }
+
+    // Write through to prices table in parallel (cheaper than per-row)
+    await Promise.all(
+      tickersNeedingPrice.map(async (t, i) => {
+        const q = quotes[i];
+        if (!q) return;
         try {
           await env.DB.prepare(`
             INSERT OR REPLACE INTO prices (ticker, price, change_1d, updated_at)
             VALUES (?, ?, ?, datetime('now'))
-          `).bind(r.ticker, q.price, q.change_1d ?? null).run();
+          `).bind(t, q.price, q.change_1d ?? null).run();
         } catch (e) {}
-      }
-    }
-    return { ...r, current_price: current };
-  }));
+      })
+    );
+  }
 
-  const withPerf = enriched
-    .filter(r => r.current_price != null)
-    .map(r => ({
-      ...r,
-      return_pct: calcReturn(r.entry_price, r.current_price!, r.direction),
-      days: daysBetween(r.entry_date, now),
-    }))
+  const now = new Date().toISOString();
+  const withPerf = raw
+    .map(r => {
+      const currentPrice = r.current_price ?? fetchedPrices.get(r.ticker) ?? null;
+      if (currentPrice == null) return null;
+      return {
+        ...r,
+        current_price: currentPrice,
+        return_pct: calcReturn(r.entry_price, currentPrice, r.direction),
+        days: daysBetween(r.entry_date, now),
+      };
+    })
+    .filter((r): r is Exclude<typeof r, null> => r !== null)
     .sort((a, b) => b.return_pct - a.return_pct);
 
-  return withPerf.map((r, i) => ({
-    rank: i + 1,
-    user_display: r.display_name || r.email.split('@')[0],
-    user_initials: initialsFrom(r.display_name || r.email.split('@')[0]),
-    ticker: r.ticker,
-    company: r.company,
-    direction: r.direction,
-    rating: r.rating,
-    entry_price: r.entry_price,
-    current_price: r.current_price!,
-    return_pct: r.return_pct,
-    annualized_pct: r.days > 0 ? Math.pow(1 + r.return_pct, 365 / r.days) - 1 : 0,
-    price_target: r.price_target,
-    days_held: r.days,
-    thesis_preview: (r.thesis || '').slice(0, 200),
-    call_id: r.id,
-  }));
+  return withPerf.map((r, i) => {
+    // Escape everything that flows into HTML
+    const safeName = escapeHtml(r.display_name || r.email.split('@')[0]);
+    const safeTicker = escapeHtml(r.ticker);
+    const safeCompany = r.company ? escapeHtml(r.company) : null;
+    return {
+      rank: i + 1,
+      user_display: safeName,
+      user_initials: initialsFrom(r.display_name || r.email.split('@')[0]),
+      ticker: safeTicker,
+      company: safeCompany,
+      direction: r.direction,
+      rating: r.rating,
+      entry_price: r.entry_price,
+      current_price: r.current_price,
+      return_pct: r.return_pct,
+      annualized_pct: r.days > 0 ? Math.pow(1 + r.return_pct, 365 / r.days) - 1 : 0,
+      price_target: r.price_target,
+      days_held: r.days,
+      thesis_preview: escapeHtml((r.thesis || '').slice(0, 200)),
+      call_id: r.id,
+    };
+  });
 }

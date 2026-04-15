@@ -18,15 +18,41 @@ export interface PriceQuote {
   as_of: string;
 }
 
+/**
+ * Primary price lookup. For READ paths (leaderboard/detail enrichment), this
+ * falls back to mock data so UI never breaks. For WRITE paths (accepting a new
+ * call), the caller MUST use `fetchPriceStrict` which returns null for tickers
+ * we can't confidently price — this is how we prevent users from submitting
+ * garbage tickers and having fake "returns" tracked against fabricated prices.
+ */
 export async function fetchPrice(ticker: string, _fmpKey?: string): Promise<PriceQuote | null> {
   const t = ticker.toUpperCase().trim();
-
-  // Try Yahoo Finance first
   const yahoo = await fetchFromYahoo(t);
   if (yahoo) return yahoo;
-
-  // Fall back to deterministic mock so UI never breaks
+  // Soft fallback for READ paths only
   return mockPrice(t);
+}
+
+/**
+ * Strict price lookup — Yahoo only, no mock fallback. Used when ACCEPTING a
+ * new call submission. If we can't price the ticker from a real source, we
+ * reject the call rather than silently inventing an entry price.
+ *
+ * In dev/demo mode (ENVIRONMENT=preview + a small allowlist) we still accept
+ * a set of known-good tickers from MOCK_PRICES so the deployed preview remains
+ * usable without external API dependency.
+ */
+export async function fetchPriceStrict(
+  ticker: string,
+  opts?: { allowDemoFallback?: boolean }
+): Promise<PriceQuote | null> {
+  const t = ticker.toUpperCase().trim();
+  const yahoo = await fetchFromYahoo(t);
+  if (yahoo) return yahoo;
+  if (opts?.allowDemoFallback && MOCK_PRICES[t]) {
+    return { ...MOCK_PRICES[t], as_of: new Date().toISOString() };
+  }
+  return null;
 }
 
 /**

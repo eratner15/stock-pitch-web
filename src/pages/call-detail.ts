@@ -1,3 +1,5 @@
+import { escapeHtml as safeEscape } from '../lib/security';
+
 interface CallDetail {
   id: string;
   ticker: string;
@@ -17,7 +19,17 @@ interface CallDetail {
   return_pct: number;
 }
 
-export function renderCallDetail(call: CallDetail, brand: 'stockpitch' | 'levincap', origin: string): string {
+export function renderCallDetail(callIn: CallDetail, brand: 'stockpitch' | 'levincap', origin: string): string {
+  // Escape every user-supplied field before rendering
+  const call: CallDetail = {
+    ...callIn,
+    ticker: safeEscape(callIn.ticker),
+    company: callIn.company ? safeEscape(callIn.company) : null,
+    display_name: safeEscape(callIn.display_name),
+    thesis: safeEscape(callIn.thesis),
+    catalyst: callIn.catalyst ? safeEscape(callIn.catalyst) : null,
+    rating: safeEscape(callIn.rating),
+  };
   const isLevin = brand === 'levincap';
   const accent = isLevin ? '#B8973E' : '#2EBD6B';
   const accentDeep = isLevin ? '#8B6F28' : '#1D9A54';
@@ -202,7 +214,7 @@ footer a{color:var(--accent);font-weight:600}
     <div class="wrap">
       <div class="thesis-card">
         <div class="label">The Thesis &middot; in the analyst's own words</div>
-        <div class="body">"${escapeHtml(call.thesis)}"</div>
+        <div class="body">"${call.thesis}"</div>
       </div>
 
       <div class="brief-label">Research Brief &middot; AI-assisted, ${call.display_name}'s thesis extended</div>
