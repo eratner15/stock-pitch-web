@@ -126,7 +126,24 @@ async function runModel(
   model: string,
   system: string,
   user: string,
-  opts: { max_tokens?: number; temperature?: number; timeoutMs?: number } = {}
+  opts: { max_tokens?: number; temperature?: number; timeoutMs?: number; minChars?: number } = {}
+): Promise<string> {
+  // Retry up to 2 times if the first call returns too-short content.
+  // Workers AI has a non-trivial rate of empty/failed responses on long
+  // prompts; a single retry usually succeeds.
+  const first = await runModelOnce(ai, model, system, user, opts);
+  if (first.length >= (opts.minChars ?? 200)) return first;
+  console.warn(`[portal] runModel retry — first attempt returned ${first.length}ch on ${model}`);
+  const second = await runModelOnce(ai, model, system, user, opts);
+  return second.length > first.length ? second : first;
+}
+
+async function runModelOnce(
+  ai: any,
+  model: string,
+  system: string,
+  user: string,
+  opts: { max_tokens?: number; temperature?: number; timeoutMs?: number; minChars?: number } = {}
 ): Promise<string> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
   const started = Date.now();
@@ -382,9 +399,9 @@ OUTPUT FORMAT: FIRST line is "# " followed by an 8-12 word argumentative H2 head
     ai, PRIMARY_MODEL,
     VOICE_SYSTEM + `
 
-OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then **800-1000 words minimum — do not stop before 800 words**. Structure: 5 paragraphs each ~180 words. 20+ source tags. 3 sidenote markers [[SIDENOTE: ...]]. No preamble, no meta, no "In conclusion".`,
-    `Write the SECOND-STRONGEST bull deep-dive for ${r.ticker}. ORTHOGONAL to the first deep dive (different axis). Minimum 800 words — keep writing until you hit 800. Do not summarize or stop early.\n\n${userBase}`,
-    { max_tokens: 3800, temperature: 0.55, timeoutMs: 80_000 }
+OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of institutional analysis in 4-5 paragraphs. 15+ source tags. 3 sidenote markers [[SIDENOTE: ...]]. No preamble.`,
+    `Write the SECOND-STRONGEST bull deep-dive for ${r.ticker}. ORTHOGONAL to the first deep dive (different axis).\n\n${userBase}`,
+    { max_tokens: 3500, temperature: 0.55, timeoutMs: 75_000 }
   ),
     // ---- Call A4: Risks (plain markdown) ----
     runModel(
@@ -409,9 +426,9 @@ OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the 
       ai, PRIMARY_MODEL,
       VOICE_SYSTEM + `
 
-OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then **800-1000 words minimum — do not stop before 800 words**. 5 paragraphs ~180 words each. 20+ source tags. 3 sidenotes [[SIDENOTE: ...]]. No preamble.`,
-      `Write a THIRD bull deep-dive for ${r.ticker}. Orthogonal to the first two (pick: international expansion, margin inflection, capex cycle, capital return, product cycle, regulatory tailwind, pricing power, or unit economics at scale). Minimum 800 words — keep writing.\n\n${userBase}`,
-      { max_tokens: 3800, temperature: 0.55, timeoutMs: 80_000 }
+OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words, 4-5 paragraphs, 15+ source tags, 3 sidenotes [[SIDENOTE: ...]]. No preamble.`,
+      `Write a THIRD bull deep-dive for ${r.ticker}. Orthogonal to the first two (pick: international expansion, margin inflection, capex cycle, capital return, product cycle, regulatory tailwind, pricing power).\n\n${userBase}`,
+      { max_tokens: 3500, temperature: 0.55, timeoutMs: 75_000 }
     ),
     // ---- Call A6: SOTP / Hidden Value (plain markdown) ----
     runModel(
@@ -445,9 +462,15 @@ OUTPUT FORMAT: 700-900 words of prose, no heading. Walk from last-reported reven
       ai, PRIMARY_MODEL,
       VOICE_SYSTEM + `
 
-OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Then 700-900 words. Name 3-5 direct competitors, give each ~100 words on scale, margin, share dynamics. Explain ${r.ticker}'s moat (cost / network / switching / brand / regulatory / scale). Include a market-share table in prose. 2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
-      `Competitive landscape deep-dive for ${r.ticker}. Name specific rivals and size the moat. 700-900 words.\n\n${userBase}`,
-      { max_tokens: 2800, temperature: 0.5, timeoutMs: 70_000 }
+OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Then **800-1000 words — do not stop before 800 words**.
+  P1: Market structure overview — total addressable market size, growth rate, top 5 players by market share %
+  P2: Direct Competitor 1 — name, revenue, margin, where they compete, taking share vs losing
+  P3: Direct Competitor 2 — same structure
+  P4: Direct Competitor 3 — same structure
+  P5: ${r.ticker}'s moat — cost / network / switching / brand / regulatory / scale — with specific evidence
+15+ source tags [10-K], [Market], [Computed]. 3 sidenote markers [[SIDENOTE: ...]]. Every competitor revenue carries a [Market] or [10-K] tag. No preamble.`,
+      `Competitive landscape deep-dive for ${r.ticker}. 800-1000 words with specific competitor revenues, market share %, and moat evidence. Minimum 15 source tags.\n\n${userBase}`,
+      { max_tokens: 3500, temperature: 0.5, timeoutMs: 80_000 }
     ),
   ]);
   const batch3 = Promise.all([
