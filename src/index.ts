@@ -1012,7 +1012,7 @@ app.post('/stripe/webhook', async (c) => {
 // PORTAL GENERATOR — build an /amzn-caliber 5-page portal for any ticker.
 // Chains Workers AI models against the stock-pitch skill.
 // ==========================================================================
-app.post('/stock-pitch/generate', async (c) => {
+app.post('/generate', async (c) => {
   let body: any;
   try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
 
@@ -1067,7 +1067,7 @@ app.post('/stock-pitch/generate', async (c) => {
   return c.json({ ok: true, jobId, ticker, redirect: `/stock-pitch/${ticker}` });
 });
 
-app.get('/stock-pitch/jobs/:jobId', async (c) => {
+app.get('/jobs/:jobId', async (c) => {
   const jobId = c.req.param('jobId');
   const job = await c.env.DB
     .prepare('SELECT * FROM portal_jobs WHERE id = ?')
@@ -1099,7 +1099,7 @@ app.get('/api/portal/jobs/:jobId', async (c) => {
 // Portal page serving — all 5 pages pull from KV after generation
 const PORTAL_PAGES = ['index', 'memo', 'model', 'consensus', 'deck', 'questions'] as const;
 for (const page of PORTAL_PAGES) {
-  const path = page === 'index' ? '/stock-pitch/:ticker' : `/stock-pitch/:ticker/${page}`;
+  const path = page === 'index' ? '/:ticker' : `/:ticker/${page}`;
   app.get(path, async (c) => {
     const ticker = sanitizeTicker(c.req.param('ticker'));
     if (!ticker) return c.text('Invalid ticker', 400);
@@ -1117,14 +1117,11 @@ app.notFound((c) => c.text('Not Found', 404));
 // the app behaves as if it owned the whole origin. Other hosts (workers.dev,
 // research.levincap.com, etc.) bypass this and hit Hono directly.
 // ==========================================================================
-// Hosts that mount stock-pitch-web at /stock-pitch (vs. the bare workers.dev
-// subdomain which serves everything at the root). Any of these hosts with
-// path starting with /stock-pitch gets the path-strip + link-rewrite.
-const MOUNT_HOSTS = new Set([
-  'levincap.com',
-  'www.levincap.com',
-  'research.levincap.com',
-]);
+// Any host receives the path-mount if the URL starts with /stock-pitch.
+// That way research.levincap.com/stock-pitch/TICKER and the bare
+// workers.dev subdomain (via /stock-pitch/TICKER) route identically —
+// Hono routes are defined WITHOUT the prefix; the wrapper strips + rewrites.
+// Host allow-list is left empty: rely purely on URL prefix.
 const MOUNT_PREFIX = '/stock-pitch';
 
 /**
@@ -1217,8 +1214,7 @@ async function generatePortal(env: Env, jobId: string, ticker: string, quote: { 
 }
 
 function isMounted(url: URL): boolean {
-  return MOUNT_HOSTS.has(url.hostname) &&
-    (url.pathname === MOUNT_PREFIX || url.pathname.startsWith(MOUNT_PREFIX + '/'));
+  return url.pathname === MOUNT_PREFIX || url.pathname.startsWith(MOUNT_PREFIX + '/');
 }
 
 function rewriteAbsolute(value: string | null): string | null {
