@@ -1,11 +1,21 @@
 /**
- * Generates a ~500-word research brief supporting a user's thesis.
- * Uses Gemma 4 on Cloudflare Workers AI (native binding, no external API).
+ * Thin dispatcher for the equity-brief skill.
  *
- * CRITICAL: Gemma 4 26B via Workers AI returns OpenAI-compatible format:
- *   { choices: [{ message: { content: "..." } }] }
- * NOT the legacy { response: "..." } format.
+ * The judgment (voice, structure, rules) lives in:
+ *   src/skills/equity-brief/SKILL.md
+ *
+ * This file's job:
+ *   1. Gather call data into template variables
+ *   2. Render the skill markdown against those variables
+ *   3. Split the skill into system (## Voice) + user (below the --- line)
+ *   4. Call the model
+ *   5. Fall back to a deterministic brief if the model misbehaves
+ *
+ * Per the three-layer principle: push intelligence UP into the skill,
+ * push execution DOWN into deterministic code, keep this harness thin.
  */
+
+import skillMarkdown from '../skills/equity-brief/SKILL.md';
 
 interface BriefInput {
   ticker: string;
@@ -19,75 +29,72 @@ interface BriefInput {
   display_name: string;
 }
 
-export async function generateBrief(ai: any, input: BriefInput): Promise<string> {
+function buildVars(input: BriefInput): Record<string, string> {
   const impliedReturn = input.direction === 'long'
     ? ((input.price_target - input.entry_price) / input.entry_price) * 100
     : ((input.entry_price - input.price_target) / input.entry_price) * 100;
 
-  const systemPrompt = `You are a senior equity research analyst writing a concise, institutional-grade research brief. Institutional tone: direct, specific, analytical. No hype, no exclamation points, no promotional language. Write like Matt Levine meets Credit Suisse. Cite the specific variant perception. Always 450-550 words.`;
+  return {
+    ticker: input.ticker,
+    company: input.company ?? '',
+    company_suffix: input.company ? ` (${input.company})` : '',
+    direction: input.direction,
+    direction_upper: input.direction.toUpperCase(),
+    rating: input.rating.toUpperCase(),
+    entry_price: input.entry_price.toFixed(2),
+    price_target: input.price_target.toFixed(2),
+    implied_return: impliedReturn.toFixed(1),
+    time_horizon_months: String(input.time_horizon_months),
+    display_name: input.display_name,
+    thesis: input.thesis.replace(/"/g, '\\"'),
+  };
+}
 
-  const userPrompt = `Write a 500-word research brief supporting this investment call.
+function substitute(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
+}
 
-**The Call:**
-- Ticker: ${input.ticker}${input.company ? ` (${input.company})` : ''}
-- Direction: ${input.direction.toUpperCase()}
-- Rating: ${input.rating.toUpperCase()}
-- Entry price: $${input.entry_price.toFixed(2)}
-- Price target: $${input.price_target.toFixed(2)}
-- Implied return: ${impliedReturn.toFixed(1)}%
-- Time horizon: ${input.time_horizon_months} months
-- Analyst: ${input.display_name}
+/**
+ * Parse the SKILL.md: extract system message (## Voice section) and user
+ * message (everything after the first `---` rule below "The prompt" header).
+ */
+function parseSkill(md: string): { system: string; userTemplate: string } {
+  // System = the "## Voice" section up to the next H2
+  const voiceMatch = md.match(/## Voice\s+([\s\S]*?)(?=\n## )/);
+  const system = voiceMatch
+    ? voiceMatch[1].trim()
+    : 'You are a senior equity research analyst. Be direct, specific, analytical.';
 
-**Analyst's thesis (verbatim):**
-"${input.thesis}"
+  // User prompt = everything after the `---\n\n` rule in the "The prompt" section
+  const promptMatch = md.match(/## The prompt[\s\S]*?\n---\n\n([\s\S]+)$/);
+  const userTemplate = promptMatch ? promptMatch[1].trim() : md;
 
-**Structure the brief as follows:**
+  return { system, userTemplate };
+}
 
-## The Setup
-Two sentences. What is the market currently pricing, and what does ${input.display_name} see differently?
-
-## Variant Perception
-A single paragraph on the specific mispricing. Be concrete about what the Street has wrong. Reference any known segment economics, consensus estimates, or industry dynamics that make the case.
-
-## Key Catalysts
-Three specific, time-bound catalysts that could close the gap between $${input.entry_price.toFixed(2)} and $${input.price_target.toFixed(2)}. Use bullet format.
-
-## Key Risks
-Two specific risks that could invalidate the thesis. Honest, not throwaway. Use bullet format.
-
-## Valuation Framework
-One paragraph: what multiple, on what earnings base, gets to the price target? If this is a sum-of-parts, asset-value, or DCF setup, name it explicitly.
-
-Rules:
-- Never invent specific financial numbers you don't know. If unsure, use approximate ranges or say "approximately."
-- Do not write a preamble or closing. Just the five sections.
-- Markdown formatting with ## headers.
-- 450-550 words total.
-- Write in third person about ${input.display_name}'s thesis. Do not address the reader as "you."`;
+export async function generateBrief(ai: any, input: BriefInput): Promise<string> {
+  const vars = buildVars(input);
+  const { system, userTemplate } = parseSkill(skillMarkdown as string);
+  const userPrompt = substitute(userTemplate, vars);
 
   try {
     const response = await ai.run('@cf/google/gemma-4-26b-a4b-it', {
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: system },
         { role: 'user', content: userPrompt },
       ],
       max_tokens: 1200,
       temperature: 0.65,
     });
 
-    // Handle both OpenAI-format and legacy Workers AI format
-    let text: string | undefined;
-    if (response?.choices?.[0]?.message?.content) {
-      text = response.choices[0].message.content;
-    } else if (response?.response) {
-      text = response.response;
-    }
+    // Handle both OpenAI-compatible and legacy Workers AI response formats
+    const text: string | undefined =
+      response?.choices?.[0]?.message?.content ?? response?.response;
 
     if (!text || text.length < 200) {
       console.warn('AI brief too short or missing:', response);
       return fallbackBrief(input);
     }
-
     return text.trim();
   } catch (err) {
     console.error('AI brief generation failed:', err);
@@ -96,8 +103,9 @@ Rules:
 }
 
 /**
- * Deterministic fallback if AI is unavailable — still produces a usable brief
- * with the user's thesis front and center.
+ * Deterministic fallback — produces a usable brief with the user's thesis
+ * front-and-center if the AI binding is unavailable. Not "intelligent" —
+ * it's execution, so it lives here in the dispatcher, not in the skill.
  */
 function fallbackBrief(input: BriefInput): string {
   const impliedReturn = input.direction === 'long'

@@ -35,3 +35,11 @@ binding = "BROWSER"
 # Nightly cron to refresh prices + recompute leaderboard
 [triggers]
 crons = ["0 23 * * *"]  # 11 PM UTC = 6 PM EST, after market close
+
+# Inline markdown skill files as strings so we can `import skill from '...md'`
+# This is what lets src/lib/ai-brief.ts pull src/skills/equity-brief/SKILL.md
+# as its procedure source.
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
+fallthrough = true

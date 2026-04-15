@@ -12,8 +12,10 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT DEFAULT (datetime('now')),
   last_seen_at TEXT,
   tier TEXT DEFAULT 'free',          -- 'free', 'pro', 'white_glove'
-  free_portals_used INTEGER DEFAULT 0
+  free_portals_used INTEGER DEFAULT 0,
+  stripe_customer_id TEXT            -- cus_... when user has a Stripe record
 );
+CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 

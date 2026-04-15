@@ -1,12 +1,16 @@
 /**
- * Email delivery via Resend.
+ * Email delivery via MailChannels tx/v1/send API.
  *
- * Config:
- *   RESEND_API_KEY — required to actually send. Without it, we log to console
- *     (dev/preview mode — useful for local testing).
- *   RESEND_FROM — the from address. Defaults to onboarding@resend.dev which
- *     only delivers to the account owner. For production, verify a domain and
- *     set this to e.g. "Stock Pitch <hello@stockpitch.app>".
+ * Config (all optional in dev — if MAIL_FROM_ADDRESS is unset we log-only):
+ *   MAILCHANNELS_API_KEY — bearer token (MailChannels moved to paid+key in 2024;
+ *     Cloudflare Workers with DKIM configured also supports keyless sends).
+ *   MAIL_FROM_ADDRESS — sender email, e.g. "hello@stockpitch.app". Required to
+ *     actually send; when unset we skip and log.
+ *   MAIL_FROM_NAME — friendly display name. Defaults to "Stock Pitch".
+ *   MAILCHANNELS_DKIM_DOMAIN / _SELECTOR / _PRIVATE_KEY — optional DKIM signing.
+ *     If all three are set, MailChannels signs outgoing mail on behalf of
+ *     the domain. Without them the send still works if the domain is
+ *     whitelisted at MailChannels.
  */
 
 interface SendArgs {
@@ -16,41 +20,68 @@ interface SendArgs {
   text?: string;
 }
 
+interface MailEnv {
+  MAILCHANNELS_API_KEY?: string;
+  MAIL_FROM_ADDRESS?: string;
+  MAIL_FROM_NAME?: string;
+  MAILCHANNELS_DKIM_DOMAIN?: string;
+  MAILCHANNELS_DKIM_SELECTOR?: string;
+  MAILCHANNELS_DKIM_PRIVATE_KEY?: string;
+}
+
 export async function sendEmail(
-  env: { RESEND_API_KEY?: string; RESEND_FROM?: string },
+  env: MailEnv,
   args: SendArgs
 ): Promise<{ ok: boolean; skipped?: boolean; id?: string; error?: string }> {
-  const from = env.RESEND_FROM || 'Stock Pitch <onboarding@resend.dev>';
+  const fromEmail = env.MAIL_FROM_ADDRESS;
+  const fromName = env.MAIL_FROM_NAME || 'Stock Pitch';
 
-  if (!env.RESEND_API_KEY) {
-    console.log(`[email skipped — no RESEND_API_KEY] to=${args.to} subject="${args.subject}"`);
+  if (!fromEmail) {
+    console.log(`[email skipped — no MAIL_FROM_ADDRESS] to=${args.to} subject="${args.subject}"`);
     return { ok: true, skipped: true };
   }
 
+  const personalization: Record<string, unknown> = {
+    to: [{ email: args.to }],
+  };
+  if (env.MAILCHANNELS_DKIM_DOMAIN && env.MAILCHANNELS_DKIM_SELECTOR && env.MAILCHANNELS_DKIM_PRIVATE_KEY) {
+    personalization.dkim_domain = env.MAILCHANNELS_DKIM_DOMAIN;
+    personalization.dkim_selector = env.MAILCHANNELS_DKIM_SELECTOR;
+    personalization.dkim_private_key = env.MAILCHANNELS_DKIM_PRIVATE_KEY;
+  }
+
+  const content: Array<{ type: string; value: string }> = [];
+  if (args.text) content.push({ type: 'text/plain', value: args.text });
+  content.push({ type: 'text/html', value: args.html });
+
+  const body = {
+    personalizations: [personalization],
+    from: { email: fromEmail, name: fromName },
+    subject: args.subject,
+    content,
+  };
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (env.MAILCHANNELS_API_KEY) {
+    headers['X-Api-Key'] = env.MAILCHANNELS_API_KEY;
+  }
+
   try {
-    const res = await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://api.mailchannels.net/tx/v1/send', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from,
-        to: [args.to],
-        subject: args.subject,
-        html: args.html,
-        text: args.text,
-      }),
+      headers,
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      console.error(`[email] Resend returned ${res.status}: ${text}`);
-      return { ok: false, error: `Resend ${res.status}` };
+      const text = await res.text().catch(() => '');
+      console.error(`[email] MailChannels returned ${res.status}: ${text}`);
+      return { ok: false, error: `MailChannels ${res.status}` };
     }
 
-    const data = await res.json<{ id: string }>();
-    return { ok: true, id: data.id };
+    // MailChannels returns the message ID via header, not body
+    const id = res.headers.get('X-Message-Id') || undefined;
+    return { ok: true, id };
   } catch (err) {
     console.error('[email] send failed:', err);
     return { ok: false, error: String(err) };

@@ -37,6 +37,13 @@ import {
   welcomeEmail,
   briefReadyEmail,
 } from './lib/email';
+import {
+  createCheckoutSession,
+  verifyStripeSignature,
+  tierFromEvent,
+  priceForTier,
+  type Tier,
+} from './lib/stripe';
 
 interface Env {
   DB: D1Database;
@@ -46,8 +53,18 @@ interface Env {
   ADMIN_KEY?: string;
   FMP_API_KEY?: string;
   SESSION_SECRET?: string;
-  RESEND_API_KEY?: string;
-  RESEND_FROM?: string;
+  // MailChannels email
+  MAILCHANNELS_API_KEY?: string;
+  MAIL_FROM_ADDRESS?: string;
+  MAIL_FROM_NAME?: string;
+  MAILCHANNELS_DKIM_DOMAIN?: string;
+  MAILCHANNELS_DKIM_SELECTOR?: string;
+  MAILCHANNELS_DKIM_PRIVATE_KEY?: string;
+  // Stripe billing (Phase 2c)
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_PRO?: string;
+  STRIPE_PRICE_WHITEGLOVE?: string;
   ENVIRONMENT: string;
 }
 
@@ -501,6 +518,18 @@ app.get('/p/:slug', async (c) => {
   try {
     const { nav, positions_with_perf, total_return_pct } = await computeCurrentNAV(c.env.DB, portfolio.id);
     const nav_history = await getNavHistory(c.env.DB, portfolio.id, 90);
+
+    // Check follow state if signed in
+    const user = c.get('user');
+    let is_following = false;
+    if (user) {
+      const row = await c.env.DB
+        .prepare('SELECT 1 AS found FROM portfolio_followers WHERE user_id = ? AND portfolio_id = ?')
+        .bind(user.id, portfolio.id)
+        .first<{ found: number }>();
+      is_following = !!row;
+    }
+
     return c.html(renderPortfolioDetail({
       portfolio,
       positions: positions_with_perf,
@@ -509,6 +538,8 @@ app.get('/p/:slug', async (c) => {
       nav_history,
       brand: c.get('brand'),
       origin: getOrigin(c),
+      is_signed_in: !!user,
+      is_following,
     }));
   } catch (err) {
     console.error('Portfolio detail error:', err);
@@ -613,6 +644,44 @@ app.get('/api/portfolios/:slug', async (c) => {
     positions: positions_with_perf,
     nav_history,
   });
+});
+
+// ==========================================================================
+// ADMIN: reseed leaderboard — wipes calls/users and re-runs seed for demos
+// Protected by ADMIN_KEY. Use during live team demo to reset state quickly.
+// ==========================================================================
+app.post('/admin/reseed', async (c) => {
+  const configured = c.env.ADMIN_KEY;
+  const supplied = c.req.header('x-admin-key') || c.req.query('key');
+  if (!configured || !supplied || supplied !== configured) {
+    return c.text('Unauthorized', 401);
+  }
+
+  try {
+    // Wipe in dependency order — positions/followers/nav before calls, calls before users
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM portfolio_positions'),
+      c.env.DB.prepare('DELETE FROM portfolio_followers'),
+      c.env.DB.prepare('DELETE FROM portfolio_nav_history'),
+      c.env.DB.prepare('DELETE FROM auth_tokens'),
+      c.env.DB.prepare('DELETE FROM calls'),
+      c.env.DB.prepare('DELETE FROM users'),
+      c.env.DB.prepare('DELETE FROM prices'),
+    ]);
+
+    // Invalidate caches
+    try {
+      await c.env.REQUESTS.delete('og:p:top10');
+    } catch (e) {}
+
+    return c.json({
+      ok: true,
+      message: 'Leaderboard wiped. Re-seed via: wrangler d1 execute stock-pitch-db --remote --file=src/db/seed.sql',
+    });
+  } catch (err) {
+    console.error('reseed failed', err);
+    return c.json({ ok: false, error: String(err) }, 500);
+  }
 });
 
 // ==========================================================================
@@ -852,6 +921,78 @@ app.delete('/api/follow/:slug', async (c) => {
     DELETE FROM portfolio_followers WHERE user_id = ? AND portfolio_id = ?
   `).bind(user.id, portfolio.id).run();
   return c.json({ ok: true, following: false });
+});
+
+// ==========================================================================
+// STRIPE — Phase 2c billing (pro + white-glove subscriptions)
+// ==========================================================================
+app.post('/api/checkout', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Not signed in' }, 401);
+
+  let body: any;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+  const tier = body.tier as Tier;
+  if (tier !== 'pro' && tier !== 'white_glove') {
+    return c.json({ error: 'Invalid tier' }, 400);
+  }
+  const priceId = priceForTier(c.env, tier);
+  if (!priceId) return c.json({ error: 'Tier not configured on server' }, 500);
+
+  const origin = getOrigin(c);
+  const result = await createCheckoutSession(c.env, {
+    priceId,
+    userId: user.id,
+    email: user.email,
+    successUrl: `${origin}/billing/success`,
+    cancelUrl: `${origin}/app`,
+  });
+
+  if (!result.ok) return c.json({ error: result.error }, 500);
+  return c.json({ ok: true, url: result.url });
+});
+
+app.get('/billing/success', (c) => {
+  // Stripe has already done its job via webhook; this is just a landing page.
+  // Redirect to dashboard — the tier change should be visible there.
+  return c.redirect('/app?upgraded=1');
+});
+
+app.post('/stripe/webhook', async (c) => {
+  const secret = c.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) return c.json({ error: 'Webhook secret not configured' }, 500);
+
+  const sig = c.req.header('stripe-signature');
+  if (!sig) return c.json({ error: 'Missing stripe-signature' }, 400);
+
+  const payload = await c.req.text();
+  const valid = await verifyStripeSignature(payload, sig, secret);
+  if (!valid) return c.json({ error: 'Invalid signature' }, 400);
+
+  let event: any;
+  try { event = JSON.parse(payload); } catch { return c.json({ error: 'Invalid payload' }, 400); }
+
+  const tierUpdate = tierFromEvent(event, c.env);
+  if (!tierUpdate) {
+    // Event we don't care about — ack so Stripe stops retrying
+    return c.json({ ok: true, ignored: event.type });
+  }
+
+  try {
+    await c.env.DB
+      .prepare(
+        `UPDATE users
+         SET tier = ?,
+             stripe_customer_id = COALESCE(?, stripe_customer_id)
+         WHERE id = ?`
+      )
+      .bind(tierUpdate.tier, tierUpdate.customer_id ?? null, tierUpdate.user_id)
+      .run();
+    return c.json({ ok: true, user_id: tierUpdate.user_id, tier: tierUpdate.tier });
+  } catch (err) {
+    console.error('[stripe] tier update failed', err);
+    return c.json({ ok: false, error: String(err) }, 500);
+  }
 });
 
 app.notFound((c) => c.text('Not Found', 404));

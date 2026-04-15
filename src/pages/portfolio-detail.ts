@@ -10,10 +10,12 @@ interface DetailInput {
   nav_history: Array<{ date: string; nav: number }>;
   brand: 'stockpitch' | 'levincap';
   origin: string;
+  is_signed_in: boolean;
+  is_following: boolean;
 }
 
 export function renderPortfolioDetail(input: DetailInput): string {
-  const { portfolio, positions, nav, total_return_pct, nav_history, brand, origin } = input;
+  const { portfolio, positions, nav, total_return_pct, nav_history, brand, origin, is_signed_in, is_following } = input;
   const isLevin = brand === 'levincap';
   const accent = isLevin ? '#B8973E' : '#2EBD6B';
   const accentDeep = isLevin ? '#8B6F28' : '#1D9A54';
@@ -88,6 +90,23 @@ nav .wrap{display:flex;justify-content:space-between;align-items:center}
 .hero h1{font-family:var(--display);font-weight:${isLevin ? '900' : '800'};font-size:${isLevin ? '56px' : '48px'};color:var(--ink);letter-spacing:-0.025em;line-height:1;margin-bottom:14px}
 .hero h1 em{font-style:italic;font-weight:${isLevin ? '400' : '500'};color:var(--accent)}
 .hero-desc{font-family:var(--body);font-size:${isLevin ? '18px' : '16px'};color:var(--ink-muted);max-width:720px;${isLevin ? 'font-style:italic' : ''};line-height:1.55}
+.follow-row{display:flex;align-items:center;gap:14px;margin-top:20px;flex-wrap:wrap}
+.follow-btn{
+  display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
+  font-family:'Inter',sans-serif;font-weight:${isLevin ? '600' : '700'};font-size:13px;
+  letter-spacing:${isLevin ? '1.5px' : '0.3px'};${isLevin ? 'text-transform:uppercase' : ''};
+  background:var(--ink);color:var(--bg);border:2px solid var(--ink);cursor:pointer;
+  ${isLevin ? '' : 'border-radius:8px;'}
+  transition:background 0.15s,color 0.15s,transform 0.1s;
+}
+.follow-btn:hover{transform:translateY(-1px)}
+.follow-btn.following{background:transparent;color:var(--ink)}
+.follow-btn.following::before{content:"✓ "}
+.follow-note{font-family:var(--body);font-size:14px;color:var(--ink-muted);${isLevin ? 'font-style:italic' : ''}}
+@media(max-width:640px){
+  .follow-btn{width:100%;justify-content:center}
+  .follow-note{font-size:13px}
+}
 
 .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:32px;border:1px solid var(--border);background:var(--surface);${isLevin ? '' : 'border-radius:14px;overflow:hidden'}}
 .kpi{padding:20px 24px;border-right:1px solid var(--border)}
@@ -171,6 +190,19 @@ footer a{color:var(--accent-deep);font-weight:600}
     <div class="hero-kicker">Model Portfolio · Auto-Rebalanced Nightly</div>
     <h1>${escapeHtml(portfolio.name)}</h1>
     <p class="hero-desc">${escapeHtml(portfolio.description || '')}</p>
+    <div class="follow-row">
+      ${is_signed_in
+        ? `<button id="followBtn"
+                   data-slug="${escapeHtml(portfolio.slug)}"
+                   data-following="${is_following ? '1' : '0'}"
+                   class="follow-btn ${is_following ? 'following' : ''}">
+             ${is_following ? '✓ Following' : '+ Follow portfolio'}
+           </button>
+           <span class="follow-note">${is_following ? 'You\'ll be notified when positions open or close.' : 'Get email notifications for every rebalance.'}</span>`
+        : `<a href="/auth/signin" class="follow-btn">Sign in to follow</a>
+           <span class="follow-note">Create an account to get notified of position changes.</span>`
+      }
+    </div>
     <div class="kpi-row">
       <div class="kpi">
         <div class="l">Current NAV</div>
@@ -287,6 +319,42 @@ async function copyLink(){
     setTimeout(() => { btn.textContent = orig; }, 1800);
   } catch(e){}
 }
+
+// Follow button toggle
+(function(){
+  const btn = document.getElementById('followBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const slug = btn.dataset.slug;
+    const currentlyFollowing = btn.dataset.following === '1';
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = currentlyFollowing ? 'Unfollowing…' : 'Following…';
+    try {
+      const method = currentlyFollowing ? 'DELETE' : 'POST';
+      const res = await fetch('/api/follow/' + encodeURIComponent(slug), { method });
+      const j = await res.json();
+      if (j.ok) {
+        const nowFollowing = j.following;
+        btn.dataset.following = nowFollowing ? '1' : '0';
+        btn.classList.toggle('following', nowFollowing);
+        btn.textContent = nowFollowing ? 'Following' : '+ Follow portfolio';
+        const note = btn.parentElement.querySelector('.follow-note');
+        if (note) note.textContent = nowFollowing
+          ? "You'll be notified when positions open or close."
+          : 'Get email notifications for every rebalance.';
+      } else {
+        btn.textContent = origText;
+        alert(j.error || 'Could not update follow state.');
+      }
+    } catch(e) {
+      btn.textContent = origText;
+      alert('Network error.');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+})();
 </script>
 
 </body>
