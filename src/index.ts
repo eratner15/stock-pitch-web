@@ -1086,6 +1086,39 @@ app.get('/jobs/:jobId', async (c) => {
   }));
 });
 
+// Karpathy-style auto-research loop: critique a generated portal vs
+// rubric, propose prompt fixes. Call with any ticker that has a portal
+// already in KV.
+app.post('/api/portal/critique', async (c) => {
+  const body = await c.req.json().catch(() => ({} as any));
+  const ticker = sanitizeTicker(String(body.ticker || ''));
+  if (!ticker) return c.json({ error: 'ticker required' }, 400);
+  const memoHtml = await c.env.REQUESTS.get(`portal:${ticker}:memo`);
+  if (!memoHtml) return c.json({ error: `No portal for ${ticker}` }, 404);
+
+  const { critiquePortal } = await import('./lib/improve/critic');
+  const report = await critiquePortal(c.env.AI, ticker, memoHtml);
+
+  // Log to KV for iteration audit trail
+  const runKey = `critique:${ticker}:${Date.now()}`;
+  try {
+    await c.env.REQUESTS.put(runKey, JSON.stringify(report), { expirationTtl: 60 * 60 * 24 * 60 });
+  } catch (e) {}
+
+  return c.json(report);
+});
+
+app.get('/api/portal/critique/:ticker/latest', async (c) => {
+  const ticker = sanitizeTicker(c.req.param('ticker'));
+  if (!ticker) return c.json({ error: 'invalid ticker' }, 400);
+  // List critiques for this ticker and return most recent
+  const list = await c.env.REQUESTS.list({ prefix: `critique:${ticker}:` });
+  if (!list.keys.length) return c.json({ error: 'no critiques yet' }, 404);
+  const latest = list.keys.sort((a, b) => b.name.localeCompare(a.name))[0];
+  const json = await c.env.REQUESTS.get(latest.name, 'json');
+  return c.json(json);
+});
+
 app.get('/api/portal/jobs/:jobId', async (c) => {
   const jobId = c.req.param('jobId');
   const job = await c.env.DB
