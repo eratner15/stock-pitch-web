@@ -324,9 +324,15 @@ OUTPUT: 500-600 words of executive-summary prose. No heading. 4+ specific dollar
       ai, PRIMARY_MODEL,
       VOICE_SYSTEM + `
 
-OUTPUT: 700-900 words of business-overview prose. No heading. Segment breakdown with revenue + op income per segment, geographic split, key products by name, employee count, one structural feature the market doesn't discuss. 3 sidenotes.`,
-      `Write the BUSINESS OVERVIEW for ${r.ticker}. Structure as 3-4 paragraphs covering segments, geography, products, and one non-obvious structural fact.\n\n${userBase}`,
-      { max_tokens: 3200, temperature: 0.5, timeoutMs: 70_000 }
+OUTPUT: **write 800-1000 words — do NOT stop before 800 words**. No heading. Five paragraphs minimum:
+  P1: What the business does + total revenue + employee count + geographic footprint
+  P2: Segment 1 — revenue, op margin, growth rate, key products, customer concentration
+  P3: Segment 2 — same structure
+  P4: Segment 3 (or geographic split if only 2 segments) — same structure
+  P5: One non-obvious structural feature the market doesn't discuss + why it matters
+3 sidenotes [[SIDENOTE: ...]]. 10+ source tags. Every dollar carries [10-K].`,
+      `Write the BUSINESS OVERVIEW for ${r.ticker}. 800-1000 words in 5 paragraphs.\n\n${userBase}`,
+      { max_tokens: 3500, temperature: 0.5, timeoutMs: 75_000 }
     ),
     runModel(
       ai, PRIMARY_MODEL,
@@ -376,9 +382,9 @@ OUTPUT FORMAT: FIRST line is "# " followed by an 8-12 word argumentative H2 head
     ai, PRIMARY_MODEL,
     VOICE_SYSTEM + `
 
-OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words, 4-5 paragraphs, 15+ source tags, 3 sidenote markers [[SIDENOTE: ...]]. No preamble.`,
-    `Write the SECOND-STRONGEST bull deep-dive for ${r.ticker}. ORTHOGONAL to the first deep dive (different axis).\n\n${userBase}`,
-    { max_tokens: 3500, temperature: 0.55, timeoutMs: 75_000 }
+OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then **800-1000 words minimum — do not stop before 800 words**. Structure: 5 paragraphs each ~180 words. 20+ source tags. 3 sidenote markers [[SIDENOTE: ...]]. No preamble, no meta, no "In conclusion".`,
+    `Write the SECOND-STRONGEST bull deep-dive for ${r.ticker}. ORTHOGONAL to the first deep dive (different axis). Minimum 800 words — keep writing until you hit 800. Do not summarize or stop early.\n\n${userBase}`,
+    { max_tokens: 3800, temperature: 0.55, timeoutMs: 80_000 }
   ),
     // ---- Call A4: Risks (plain markdown) ----
     runModel(
@@ -403,9 +409,9 @@ OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the 
       ai, PRIMARY_MODEL,
       VOICE_SYSTEM + `
 
-OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words, 4-5 paragraphs, 15+ source tags, 3 sidenotes.`,
-      `Write a THIRD bull deep-dive for ${r.ticker}. Orthogonal to the first two (pick: international expansion, margin inflection, capex cycle, capital return, product cycle, regulatory tailwind, or pricing power).\n\n${userBase}`,
-      { max_tokens: 3500, temperature: 0.55, timeoutMs: 75_000 }
+OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then **800-1000 words minimum — do not stop before 800 words**. 5 paragraphs ~180 words each. 20+ source tags. 3 sidenotes [[SIDENOTE: ...]]. No preamble.`,
+      `Write a THIRD bull deep-dive for ${r.ticker}. Orthogonal to the first two (pick: international expansion, margin inflection, capex cycle, capital return, product cycle, regulatory tailwind, pricing power, or unit economics at scale). Minimum 800 words — keep writing.\n\n${userBase}`,
+      { max_tokens: 3800, temperature: 0.55, timeoutMs: 80_000 }
     ),
     // ---- Call A6: SOTP / Hidden Value (plain markdown) ----
     runModel(
