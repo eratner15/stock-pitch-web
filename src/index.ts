@@ -20,6 +20,23 @@ import {
 } from './lib/portfolios';
 import { renderPortfolioDetail } from './pages/portfolio-detail';
 import { renderPortfolioCard } from './pages/portfolio-card';
+import { renderAuthRequest, renderAuthVerifyError } from './pages/auth-pages';
+import { renderDashboard } from './pages/dashboard';
+import {
+  createMagicToken,
+  verifyMagicToken,
+  signSession,
+  getUserFromRequest,
+  sessionSetCookie,
+  sessionClearCookie,
+  type SessionUser,
+} from './lib/auth';
+import {
+  sendEmail,
+  magicLinkEmail,
+  welcomeEmail,
+  briefReadyEmail,
+} from './lib/email';
 
 interface Env {
   DB: D1Database;
@@ -28,6 +45,9 @@ interface Env {
   BROWSER: Fetcher;
   ADMIN_KEY?: string;
   FMP_API_KEY?: string;
+  SESSION_SECRET?: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM?: string;
   ENVIRONMENT: string;
 }
 
@@ -44,11 +64,29 @@ function getOrigin(c: any): string {
   return `${proto}://${host}`;
 }
 
-const app = new Hono<{ Bindings: Env; Variables: { brand: Brand } }>();
+const app = new Hono<{ Bindings: Env; Variables: { brand: Brand; user: SessionUser | null } }>();
 
 app.use('*', async (c, next) => {
   const host = c.req.header('host') || '';
-  c.set('brand', detectBrand(host));
+  // Preview override — ?brand=levincap|stockpitch — so we can A/B test both
+  // variants on the same workers.dev subdomain before custom domains are live.
+  const override = c.req.query('brand');
+  if (override === 'levincap' || override === 'stockpitch') {
+    c.set('brand', override);
+  } else {
+    c.set('brand', detectBrand(host));
+  }
+  const secret = c.env.SESSION_SECRET;
+  if (secret) {
+    try {
+      const user = await getUserFromRequest(c.req.raw.headers, secret);
+      c.set('user', user);
+    } catch {
+      c.set('user', null);
+    }
+  } else {
+    c.set('user', null);
+  }
   await next();
 });
 
@@ -386,6 +424,14 @@ app.post('/api/calls', async (c) => {
             display_name: displayName,
           });
           await c.env.REQUESTS.put(`brief:${callId}`, brief, { expirationTtl: 30 * 86400 });
+          // Notify user that their brief is ready
+          try {
+            const origin = getOrigin(c);
+            const { subject, html } = briefReadyEmail(origin, ticker, callId, direction);
+            await sendEmail(c.env, { to: email, subject, html });
+          } catch (e) {
+            console.error('brief-ready email failed', e);
+          }
         } catch (err) {
           console.error('Background brief generation failed:', err);
         }
@@ -603,6 +649,210 @@ app.get('/api/brand', (c) => c.json({
   brand: c.get('brand'),
   host: c.req.header('host'),
 }));
+
+// ==========================================================================
+// AUTH — magic link sign-in
+// ==========================================================================
+app.get('/auth/signin', (c) => {
+  const email = c.req.query('email') || '';
+  return c.html(renderAuthRequest(c.get('brand'), email));
+});
+
+app.post('/auth/request', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as any));
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!isValidEmail(email)) return c.json({ ok: false, error: 'Valid email required' }, 400);
+
+    // Rate limit by IP and email — magic links are abusable for spam
+    const ip = c.req.header('cf-connecting-ip') || 'unknown';
+    const ipLimit = await checkRateLimit(c.env.REQUESTS, `auth:ip:${ip}`, 10, 3600);
+    if (!ipLimit.allowed) {
+      return c.json({ ok: false, error: 'Too many requests. Try again in an hour.' }, 429);
+    }
+    const emailLimit = await checkRateLimit(c.env.REQUESTS, `auth:email:${email}`, 5, 3600);
+    if (!emailLimit.allowed) {
+      return c.json({ ok: false, error: 'Too many links sent. Check your inbox or wait an hour.' }, 429);
+    }
+
+    const token = await createMagicToken(c.env.DB, email);
+    const origin = getOrigin(c);
+    const { subject, html, text } = magicLinkEmail(origin, token);
+    const sendResult = await sendEmail(c.env, { to: email, subject, html, text });
+
+    // Dev mode: no RESEND_API_KEY — surface the link so we can copy-paste
+    if (sendResult.skipped) {
+      console.log(`[auth] magic link (dev): ${origin}/auth/verify/${token}`);
+    }
+
+    return c.json({ ok: true });
+  } catch (err) {
+    console.error('auth/request failed', err);
+    return c.json({ ok: false, error: 'Could not send link. Try again.' }, 500);
+  }
+});
+
+app.get('/auth/verify/:token', async (c) => {
+  const brand = c.get('brand');
+  const secret = c.env.SESSION_SECRET;
+  if (!secret) {
+    return c.html(renderAuthVerifyError(brand, 'Auth is not configured on this server.'));
+  }
+  const token = c.req.param('token');
+  const result = await verifyMagicToken(c.env.DB, token, brand);
+  if (!result) {
+    return c.html(renderAuthVerifyError(brand, 'This link is invalid, expired, or already used.'));
+  }
+
+  // Check if this was their first sign-in — send welcome email if so
+  const userRow = await c.env.DB
+    .prepare('SELECT display_name, last_seen_at FROM users WHERE id = ?')
+    .bind(result.user_id)
+    .first<{ display_name: string | null; last_seen_at: string | null }>();
+
+  // Heuristic: if last_seen_at is null/unset at verify, treat as first-time
+  // (verify consumes the token and sets last_seen_at afterward)
+  const isFirstSignIn = !userRow?.last_seen_at;
+  if (isFirstSignIn) {
+    c.executionCtx.waitUntil((async () => {
+      try {
+        const origin = getOrigin(c);
+        const { subject, html } = welcomeEmail(origin, userRow?.display_name || null);
+        await sendEmail(c.env, { to: result.email, subject, html });
+      } catch (e) {
+        console.error('welcome email failed', e);
+      }
+    })());
+  }
+
+  const cookie = await signSession(result.user_id, result.email, secret);
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Set-Cookie': sessionSetCookie(cookie),
+      Location: '/app',
+    },
+  });
+});
+
+app.post('/auth/logout', (c) => {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      'Set-Cookie': sessionClearCookie(),
+      Location: '/',
+    },
+  });
+});
+
+// ==========================================================================
+// DASHBOARD — /app (requires auth)
+// ==========================================================================
+app.get('/app', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.redirect('/auth/signin');
+
+  // Fetch user profile for display_name
+  const profile = await c.env.DB
+    .prepare('SELECT id, email, display_name FROM users WHERE id = ?')
+    .bind(user.id)
+    .first<{ id: string; email: string; display_name: string | null }>();
+  if (!profile) return c.redirect('/auth/signin');
+
+  // Fetch user's calls + current prices
+  const callsRaw = await c.env.DB.prepare(`
+    SELECT c.id, c.ticker, c.company, c.direction, c.rating, c.entry_price, c.entry_date,
+           c.price_target, c.thesis,
+           p.price AS current_price
+    FROM calls c
+    LEFT JOIN prices p ON p.ticker = c.ticker
+    WHERE c.user_id = ? AND c.status = 'open'
+    ORDER BY c.created_at DESC
+  `).bind(user.id).all<{
+    id: string; ticker: string; company: string | null; direction: 'long' | 'short';
+    rating: string; entry_price: number; entry_date: string; price_target: number;
+    thesis: string | null; current_price: number | null;
+  }>();
+
+  const now = new Date().toISOString();
+  const calls = (callsRaw.results ?? []).map(r => ({
+    id: r.id,
+    ticker: r.ticker,
+    company: r.company,
+    direction: r.direction,
+    rating: r.rating,
+    entry_price: r.entry_price,
+    current_price: r.current_price,
+    price_target: r.price_target,
+    return_pct: r.current_price != null ? calcReturn(r.entry_price, r.current_price, r.direction) : 0,
+    days_held: daysBetween(r.entry_date, now),
+    entry_date: r.entry_date,
+    thesis: r.thesis ?? '',
+  }));
+
+  // Fetch portfolios the user follows
+  const followedRaw = await c.env.DB.prepare(`
+    SELECT p.slug, p.name, p.description, p.current_value, p.irr_since_inception,
+           pf.followed_at
+    FROM portfolio_followers pf
+    JOIN portfolios p ON p.id = pf.portfolio_id
+    WHERE pf.user_id = ?
+    ORDER BY pf.followed_at DESC
+  `).bind(user.id).all<{
+    slug: string; name: string; description: string | null;
+    current_value: number | null; irr_since_inception: number | null;
+    followed_at: string;
+  }>();
+  const followed = followedRaw.results ?? [];
+
+  return c.html(renderDashboard({
+    user: profile,
+    calls,
+    followed,
+    brand: c.get('brand'),
+  }));
+});
+
+// ==========================================================================
+// FOLLOW API — /api/follow/:slug
+// ==========================================================================
+app.post('/api/follow/:slug', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Not signed in' }, 401);
+  const slug = c.req.param('slug').toLowerCase().trim();
+  const portfolio = await c.env.DB
+    .prepare('SELECT id FROM portfolios WHERE slug = ?')
+    .bind(slug)
+    .first<{ id: string }>();
+  if (!portfolio) return c.json({ error: 'Portfolio not found' }, 404);
+
+  try {
+    await c.env.DB.prepare(`
+      INSERT OR IGNORE INTO portfolio_followers (user_id, portfolio_id, followed_at)
+      VALUES (?, ?, datetime('now'))
+    `).bind(user.id, portfolio.id).run();
+  } catch (e) {
+    console.error('follow insert failed', e);
+    return c.json({ error: 'Could not follow' }, 500);
+  }
+  return c.json({ ok: true, following: true });
+});
+
+app.delete('/api/follow/:slug', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Not signed in' }, 401);
+  const slug = c.req.param('slug').toLowerCase().trim();
+  const portfolio = await c.env.DB
+    .prepare('SELECT id FROM portfolios WHERE slug = ?')
+    .bind(slug)
+    .first<{ id: string }>();
+  if (!portfolio) return c.json({ error: 'Portfolio not found' }, 404);
+
+  await c.env.DB.prepare(`
+    DELETE FROM portfolio_followers WHERE user_id = ? AND portfolio_id = ?
+  `).bind(user.id, portfolio.id).run();
+  return c.json({ ok: true, following: false });
+});
 
 app.notFound((c) => c.text('Not Found', 404));
 

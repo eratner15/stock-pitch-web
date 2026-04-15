@@ -1,429 +1,374 @@
 import type { PortalEntry } from '../portfolio';
 
 /**
- * Variant B: Levin Capital Research — editorial / institutional brand.
- * Magazine-family typography (Playfair + Cormorant + Inter), paper/ink/gold palette.
- * Inherits design DNA from The LCS Review.
+ * Levin Capital Research homepage — Loeb-Rhoades-inspired engraved aesthetic.
+ * Bodoni Moda + Cormorant Garamond, cream laid paper, banker forest green +
+ * champagne gold. No fabricated credentials. Mobile-readable.
  */
 export function renderLevinCapLanding(portfolio: PortalEntry[]): string {
-  const featured = portfolio.filter(p => p.featured);
-  const rest = portfolio.filter(p => !p.featured);
+  const featured = portfolio.filter(p => p.featured).slice(0, 3);
+  const rest = portfolio.filter(p => !p.featured).slice(0, 6);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Levin Capital Research — institutional equity research engagements, from the editor of The LCS Review. Browse live portals. Request bespoke coverage.">
-<meta property="og:title" content="Levin Capital Research — Institutional coverage on demand">
-<meta property="og:description" content="From the editor of The LCS Review. Institutional-quality equity research portals with source attribution, interactive models, and print-ready delivery.">
-<meta name="theme-color" content="#FAF7F0">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x1F4DA;</text></svg>">
-<title>Levin Capital Research &middot; Institutional coverage on demand</title>
+<meta name="description" content="Levin Capital Research — private notes on public markets. The Ledger compiles members' thesis calls and tracks them against the market nightly.">
+<meta property="og:title" content="Levin Capital Research">
+<meta property="og:description" content="Private notes on public markets. The Ledger keeps the score.">
+<meta name="theme-color" content="#0F3B2E">
+<title>Levin Capital Research</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,700;0,6..96,900;1,6..96,400;1,6..96,700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --paper:#FAF7F0;
-  --paper-2:#F3EEE1;
-  --paper-3:#ECE5D4;
-  --ink:#0A0A0A;
-  --ink-80:#2A2A2A;
-  --ink-60:#5A5A55;
-  --ink-40:#85817A;
-  --ink-20:#C5BFB2;
+  --paper:#F3EAD5;
+  --paper-deep:#E6DABF;
+  --paper-warm:#F8F0DB;
+  --ink:#0A0806;
+  --ink-80:#2E281D;
+  --ink-60:#5A5040;
+  --ink-40:#847961;
+  --ink-20:#B8AE95;
+  --rule:#2E281D;
+  --banker:#0F3B2E;
+  --banker-deep:#082619;
   --gold:#B8973E;
   --gold-deep:#8B6F28;
-  --claret:#7A1F2B;
-  --steel:#2C5F7C;
-  --green:#1A7A3A;
-  --red:#C0392B;
-  --serif:'Playfair Display',Georgia,serif;
-  --body-serif:'Cormorant Garamond',Georgia,serif;
-  --sans:'Inter',system-ui,sans-serif;
+  --ledger-green:#0F3B2E;
+  --ledger-red:#8B2A1E;
+  --display:'Bodoni Moda','Didot',Georgia,serif;
+  --body:'Cormorant Garamond','EB Garamond',Georgia,serif;
+  --smcp:'IM Fell English SC',serif;
 }
-html{scroll-behavior:smooth}
-body{font-family:var(--body-serif);background:var(--paper);color:var(--ink-80);line-height:1.55;-webkit-font-smoothing:antialiased;font-size:17px}
+html{background:var(--paper);scroll-behavior:smooth}
+body{
+  font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.55;font-size:19px;
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:'onum' 1,'liga' 1,'dlig' 1;
+  background-image:
+    repeating-linear-gradient(0deg,transparent 0 31px,rgba(46,40,29,0.025) 31px 32px),
+    radial-gradient(ellipse at 50% 0%,rgba(184,151,62,0.10),transparent 55%),
+    radial-gradient(ellipse at 85% 85%,rgba(15,59,46,0.07),transparent 50%),
+    radial-gradient(circle at 15% 60%,rgba(46,40,29,0.04),transparent 30%);
+  background-attachment:fixed;
+}
 a{color:inherit;text-decoration:none}
-.wrap{max-width:1180px;margin:0 auto;padding:0 40px}
-.rule{border:none;border-top:1px solid var(--ink);margin:0}
+.wrap{max-width:1020px;margin:0 auto;padding:0 40px}
 
-/* MASTHEAD */
-.masthead{background:var(--paper);padding:24px 0 20px;border-bottom:3px double var(--ink)}
-.masthead .wrap{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px}
-.masthead-brand{font-family:var(--serif);font-weight:900;color:var(--ink);font-size:26px;letter-spacing:-0.01em;line-height:1}
-.masthead-brand em{font-weight:400;font-style:italic}
-.masthead-meta{font-family:var(--sans);font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--ink-60);font-weight:600;text-align:right;line-height:1.7}
-.masthead-meta strong{color:var(--ink);font-weight:700}
+/* MASTHEAD ---------------------------------------------------------------- */
+.mast{padding:36px 0 0;position:relative;background:var(--paper);border-bottom:1px solid var(--ink)}
+.mast::after{content:"";position:absolute;left:0;right:0;bottom:-5px;height:1px;background:var(--ink)}
+.mast .wrap{text-align:center}
+.mast-word{
+  font-family:var(--display);font-weight:900;font-size:46px;line-height:1;color:var(--ink);
+  letter-spacing:0.01em;text-transform:uppercase;font-variant-numeric:lining-nums;
+}
+.mast-sub{
+  font-family:var(--display);font-style:italic;font-weight:400;font-size:26px;color:var(--banker);
+  letter-spacing:0.02em;margin-top:4px;
+}
+.mast-hairline{margin:22px auto 0;width:100%;max-width:520px;height:1px;background:var(--ink);position:relative}
+.mast-hairline::before,.mast-hairline::after{content:"";position:absolute;top:-3px;width:7px;height:7px;background:var(--gold);transform:rotate(45deg)}
+.mast-hairline::before{left:-3px}
+.mast-hairline::after{right:-3px}
+.mast-nav{
+  padding:16px 0 20px;display:flex;justify-content:center;gap:40px;
+  font-family:var(--smcp);font-size:13px;letter-spacing:4px;text-transform:uppercase;color:var(--ink-60);
+}
+.mast-nav a{padding:4px 0;border-bottom:2px solid transparent;transition:border 0.2s,color 0.2s}
+.mast-nav a:hover,.mast-nav a.active{color:var(--banker);border-bottom-color:var(--gold)}
 
-/* HERO */
-.hero{padding:96px 0 80px;text-align:center;position:relative;overflow:hidden;background:linear-gradient(180deg,var(--paper) 0%,var(--paper-2) 100%)}
-.hero-kicker{font-family:var(--sans);font-size:11px;letter-spacing:5px;text-transform:uppercase;color:var(--gold-deep);font-weight:800;margin-bottom:20px}
-.hero-kicker::before{content:'\u25C6  ';color:var(--gold)}
-.hero-kicker::after{content:'  \u25C6';color:var(--gold)}
-.hero h1{font-family:var(--serif);font-weight:900;font-size:92px;color:var(--ink);letter-spacing:-0.035em;line-height:0.95;max-width:960px;margin:0 auto 28px}
-.hero h1 em{font-weight:400;font-style:italic;color:var(--claret)}
-.hero-deck{font-family:var(--body-serif);font-size:22px;color:var(--ink-80);max-width:680px;margin:0 auto 36px;line-height:1.55;font-style:italic;font-weight:500}
-.hero-byline{font-family:var(--sans);font-size:10px;letter-spacing:4px;text-transform:uppercase;color:var(--ink-60);font-weight:700;margin-bottom:40px}
-.hero-byline strong{color:var(--ink);font-weight:800}
-.hero-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:20px}
-.btn{padding:16px 32px;font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;transition:all 0.15s;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:10px}
-.btn-primary{background:var(--ink);color:var(--paper)}
-.btn-primary:hover{background:var(--ink-80)}
-.btn-secondary{background:transparent;color:var(--ink);border:1px solid var(--ink)}
-.btn-secondary:hover{background:var(--ink);color:var(--paper)}
+/* DECO RULE --------------------------------------------------------------- */
+.deco{display:flex;align-items:center;justify-content:center;gap:14px;margin:40px 0;color:var(--gold)}
+.deco::before,.deco::after{content:"";flex:0 1 160px;height:1px;background:linear-gradient(90deg,transparent,var(--gold-deep),transparent)}
+.deco .diamond{width:9px;height:9px;background:var(--gold);transform:rotate(45deg)}
 
-/* QUICK STATS — editorial row */
-.stats-row{padding:40px 0;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);background:var(--paper)}
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;max-width:920px;margin:0 auto}
-.stat{padding:0 32px;border-right:1px solid var(--ink-20);text-align:center}
-.stat:first-child{padding-left:0}
-.stat:last-child{border-right:none;padding-right:0}
-.stat-v{font-family:var(--serif);font-weight:900;font-size:56px;color:var(--ink);letter-spacing:-0.02em;line-height:1}
-.stat-v em{font-weight:400;font-style:italic;color:var(--claret)}
-.stat-l{font-family:var(--sans);font-size:10px;letter-spacing:2.5px;text-transform:uppercase;color:var(--ink-60);font-weight:700;margin-top:8px}
+/* HERO / ESSAY ------------------------------------------------------------ */
+.hero{padding:48px 0 24px}
+.hero .wrap{text-align:center}
+.hero-dateline{font-family:var(--smcp);font-size:11px;letter-spacing:5px;color:var(--ink-60);margin-bottom:22px;text-transform:uppercase}
+.hero h1{
+  font-family:var(--display);font-weight:900;font-size:clamp(48px,6.5vw,82px);line-height:0.98;
+  color:var(--ink);letter-spacing:-0.02em;margin-bottom:20px;
+}
+.hero h1 em{font-style:italic;font-weight:400;color:var(--banker)}
+.hero-deck{
+  font-family:var(--body);font-style:italic;font-size:22px;line-height:1.5;color:var(--ink-80);
+  max-width:640px;margin:0 auto 30px;
+}
+.hero-ctas{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;padding:13px 26px;
+  font-family:var(--smcp);font-weight:400;font-size:12px;letter-spacing:4px;text-transform:uppercase;
+  transition:background 0.2s,color 0.2s;cursor:pointer;border:1px solid var(--ink);
+}
+.btn-primary{background:var(--banker);color:var(--paper);border-color:var(--banker)}
+.btn-primary:hover{background:var(--banker-deep);color:var(--paper)}
+.btn-gold{background:var(--gold);color:var(--ink);border-color:var(--gold-deep)}
+.btn-gold:hover{background:var(--gold-deep);color:var(--paper)}
+.btn-ghost{background:transparent;color:var(--ink)}
+.btn-ghost:hover{background:var(--ink);color:var(--paper)}
 
-/* GALLERY / FEATURE WELL */
-.well{padding:88px 0 72px}
-.section-header{text-align:center;margin-bottom:64px}
-.section-kicker{font-family:var(--sans);font-size:10px;letter-spacing:5px;text-transform:uppercase;color:var(--gold-deep);font-weight:800;margin-bottom:12px}
-.section-title{font-family:var(--serif);font-weight:900;font-size:56px;color:var(--ink);letter-spacing:-0.03em;line-height:0.95;text-transform:uppercase}
-.section-title em{font-weight:400;font-style:italic;text-transform:none}
-.section-deck{font-family:var(--body-serif);font-size:18px;color:var(--ink-60);max-width:620px;margin:16px auto 0;font-style:italic;font-weight:500}
+/* KPI ROW ----------------------------------------------------------------- */
+.kpis{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:44px;
+  border-top:3px double var(--ink);border-bottom:3px double var(--ink);
+}
+.kpi{padding:20px 18px;border-right:1px solid var(--ink-20);text-align:center}
+.kpi:last-child{border-right:none}
+.kpi-v{font-family:var(--display);font-weight:900;font-size:38px;line-height:0.95;color:var(--ink);letter-spacing:-0.01em;font-variant-numeric:oldstyle-nums}
+.kpi-v em{font-style:italic;font-weight:400;color:var(--banker)}
+.kpi-l{font-family:var(--smcp);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--ink-60);margin-top:8px}
 
-.feature-hero{background:var(--ink);color:var(--paper);padding:56px;margin-bottom:48px;position:relative;overflow:hidden}
-.feature-hero::before{content:'P. 01';position:absolute;top:24px;right:32px;font-family:var(--serif);font-size:20px;color:var(--gold);font-weight:900;letter-spacing:-0.01em}
-.feature-hero .row{display:grid;grid-template-columns:1.4fr 1fr;gap:56px;align-items:center;position:relative;z-index:2}
-.fh-kicker{font-family:var(--sans);font-size:10px;letter-spacing:4px;text-transform:uppercase;color:var(--gold);font-weight:800;margin-bottom:14px}
-.fh-title{font-family:var(--serif);font-weight:900;font-size:56px;line-height:0.95;color:var(--paper);letter-spacing:-0.025em;margin-bottom:20px}
-.fh-title em{font-weight:400;font-style:italic;color:var(--gold)}
-.fh-deck{font-family:var(--body-serif);font-size:18px;line-height:1.55;color:rgba(250,247,240,0.78);font-style:italic;font-weight:500;margin-bottom:28px}
-.fh-stats{display:grid;grid-template-columns:repeat(2,auto);gap:28px;margin-bottom:28px}
-.fh-stat-v{font-family:var(--serif);font-weight:900;font-size:36px;color:var(--gold);letter-spacing:-0.01em;line-height:1}
-.fh-stat-l{font-family:var(--sans);font-size:10px;letter-spacing:2px;color:rgba(250,247,240,0.55);text-transform:uppercase;font-weight:700;margin-top:6px}
-.fh-read{display:inline-block;padding:12px 24px;background:var(--gold);color:var(--ink);font-family:var(--sans);font-size:11px;font-weight:800;letter-spacing:3px;text-transform:uppercase}
-.fh-read:hover{background:#D4B048}
+/* SECTION SHARED ---------------------------------------------------------- */
+.section-eyebrow{font-family:var(--smcp);font-size:11px;letter-spacing:5px;color:var(--banker);margin-bottom:10px;text-transform:uppercase;text-align:center}
+.section-hed{font-family:var(--display);font-weight:400;font-style:italic;font-size:clamp(34px,4.5vw,48px);line-height:1.05;color:var(--ink);letter-spacing:-0.01em;text-align:center;margin-bottom:12px}
+.section-hed strong{font-weight:900;font-style:normal}
+.section-sub{font-family:var(--body);font-style:italic;font-size:18px;color:var(--ink-60);max-width:560px;margin:0 auto 40px;text-align:center}
 
-/* Portal cards (editorial style) */
-.featured-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:48px}
-.portal-card{background:var(--paper);border-top:3px solid var(--ink);padding:28px 0;position:relative;display:block;transition:background 0.15s}
-.portal-card:hover{background:var(--paper-2)}
-.portal-card::before{content:attr(data-page);position:absolute;top:-3px;right:0;font-family:var(--serif);font-weight:900;font-size:56px;color:var(--ink-20);line-height:0.85;letter-spacing:-0.03em}
-.portal-kicker{font-family:var(--sans);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--claret);font-weight:800;margin-bottom:12px}
-.portal-ticker{font-family:var(--sans);font-size:11px;letter-spacing:3px;color:var(--ink-60);font-weight:700;margin-bottom:8px}
-.portal-title{font-family:var(--serif);font-weight:900;font-size:36px;line-height:0.95;color:var(--ink);letter-spacing:-0.02em;margin-bottom:14px}
-.portal-title em{font-weight:400;font-style:italic}
-.portal-deck{font-family:var(--body-serif);font-size:16px;line-height:1.55;color:var(--ink-60);font-style:italic;margin-bottom:18px}
-.portal-footer{display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:1px solid var(--ink-20)}
-.portal-stat{font-family:var(--serif);font-weight:900;font-size:24px;color:var(--ink)}
-.portal-stat-label{font-family:var(--sans);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink-60);font-weight:700;margin-top:4px}
-.portal-read{font-family:var(--sans);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--ink);font-weight:800;border-bottom:1px solid var(--ink);padding-bottom:2px}
-.portal-read::after{content:' \u2192'}
+/* THREE-STEP -------------------------------------------------------------- */
+.steps{padding:32px 0 20px}
+.step-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.step{
+  background:var(--paper-warm);padding:30px 26px;border:1px solid var(--ink);position:relative;
+  box-shadow:inset 0 0 0 1px var(--paper-warm),inset 0 0 0 4px transparent,inset 0 0 0 5px var(--gold-deep);
+}
+.step-num{font-family:var(--display);font-style:italic;font-weight:400;font-size:52px;line-height:0.85;color:var(--banker);margin-bottom:14px}
+.step-hed{font-family:var(--display);font-weight:700;font-size:22px;line-height:1.1;color:var(--ink);margin-bottom:10px;letter-spacing:-0.01em}
+.step-body{font-family:var(--body);font-size:17px;line-height:1.55;color:var(--ink-80)}
 
-.rest-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
-.rest-card{background:var(--paper);padding:24px;border:1px solid var(--ink-20);transition:border 0.15s}
-.rest-card:hover{border-color:var(--ink)}
-.rest-card .portal-title{font-size:22px;margin-bottom:10px}
-.rest-card .portal-deck{font-size:14px;margin-bottom:14px}
-.rest-card .portal-stat{font-size:18px}
-.rest-card::before{display:none}
+/* GALLERY ----------------------------------------------------------------- */
+.gallery{padding:24px 0 40px}
+.portal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.portal-grid.secondary{gap:14px;margin-top:18px}
+.portal{
+  background:var(--paper-warm);padding:24px 22px;border:1px solid var(--ink);position:relative;
+  box-shadow:inset 0 0 0 1px var(--paper-warm),inset 0 0 0 4px transparent,inset 0 0 0 5px var(--gold-deep);
+  transition:transform 0.15s;display:block;
+}
+.portal:hover{transform:translateY(-2px)}
+.portal-ticker{font-family:var(--display);font-weight:700;font-size:30px;line-height:1;color:var(--ink);margin-bottom:2px;letter-spacing:1px}
+.portal-co{font-family:var(--body);font-style:italic;font-size:15px;color:var(--ink-60);margin-bottom:14px}
+.portal-cat{display:inline-block;font-family:var(--smcp);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--banker);border:1px solid var(--banker);padding:2px 8px;margin-bottom:14px}
+.portal-thesis{font-family:var(--body);font-size:16px;line-height:1.55;color:var(--ink-80);margin-bottom:18px}
+.portal-foot{display:flex;justify-content:space-between;align-items:baseline;padding-top:12px;border-top:1px solid var(--ink-20)}
+.portal-stat{font-family:var(--display);font-weight:900;font-size:24px;color:var(--ledger-green);line-height:1;font-variant-numeric:oldstyle-nums}
+.portal-stat-l{font-family:var(--smcp);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-40);margin-top:3px}
+.portal-rating{font-family:var(--smcp);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--ink);border:1px solid var(--ink);padding:3px 8px}
+.portal-rating.buy,.portal-rating.ow{color:var(--ledger-green);border-color:var(--ledger-green)}
+.portal-rating.hold{color:var(--ink-40);border-color:var(--ink-40)}
+.portal-rating.part{color:var(--banker);border-color:var(--banker)}
+.portal.compact{padding:20px}
+.portal.compact .portal-ticker{font-size:24px}
+.portal.compact .portal-thesis{font-size:15px;margin-bottom:14px}
 
-/* EDITOR'S NOTE */
-.editors{background:var(--paper-2);padding:96px 0;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink)}
-.editors-inner{max-width:720px;margin:0 auto;text-align:center}
-.editors-kicker{font-family:var(--sans);font-size:10px;letter-spacing:5px;text-transform:uppercase;color:var(--gold-deep);font-weight:800;margin-bottom:16px}
-.editors-title{font-family:var(--serif);font-weight:900;font-size:48px;color:var(--ink);letter-spacing:-0.02em;line-height:1;margin-bottom:32px}
-.editors-title em{font-weight:400;font-style:italic}
-.editors-body{font-family:var(--body-serif);font-size:19px;line-height:1.75;color:var(--ink-80);text-align:left;font-weight:500}
-.editors-body::first-letter{font-family:var(--serif);float:left;font-size:88px;line-height:0.84;padding:8px 14px 0 0;font-weight:900;color:var(--ink)}
-.editors-body p{margin-bottom:20px}
-.editors-sig{margin-top:36px;padding-top:24px;border-top:1px solid var(--ink-20);text-align:center}
-.sig-name{font-family:var(--serif);font-weight:400;font-style:italic;font-size:26px;color:var(--ink)}
-.sig-title{font-family:var(--sans);font-size:10px;color:var(--ink-60);letter-spacing:3px;text-transform:uppercase;margin-top:6px;font-weight:600}
+/* PRACTICE ESSAY ---------------------------------------------------------- */
+.practice{padding:40px 0 28px}
+.practice .wrap{max-width:720px}
+.practice h2{font-family:var(--display);font-weight:900;font-size:36px;line-height:1;color:var(--ink);letter-spacing:-0.01em;text-align:center;margin-bottom:24px}
+.practice h2 em{font-style:italic;font-weight:400;color:var(--banker)}
+.practice p{font-family:var(--body);font-size:19px;line-height:1.65;color:var(--ink-80);margin-bottom:18px}
+.practice p:first-of-type::first-letter{
+  font-family:var(--display);font-weight:900;font-size:60px;line-height:0.9;color:var(--banker);
+  float:left;padding:6px 10px 0 0;
+}
 
-/* ENGAGEMENT BOX */
-.order{padding:96px 0;background:var(--ink);color:var(--paper)}
-.order-inner{max-width:860px;margin:0 auto;text-align:center}
-.order-kicker{font-family:var(--sans);font-size:10px;letter-spacing:5px;text-transform:uppercase;color:var(--gold);font-weight:800;margin-bottom:14px}
-.order-title{font-family:var(--serif);font-weight:900;font-size:56px;color:var(--paper);letter-spacing:-0.025em;line-height:0.95;margin-bottom:20px}
-.order-title em{font-weight:400;font-style:italic;color:var(--gold)}
-.order-deck{font-family:var(--body-serif);font-size:20px;color:rgba(250,247,240,0.75);max-width:640px;margin:0 auto 48px;font-style:italic;font-weight:500;line-height:1.55}
-.price-card{background:rgba(250,247,240,0.04);border:1px solid rgba(250,247,240,0.12);padding:40px;max-width:620px;margin:0 auto;text-align:left}
-.price-top{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:28px;border-bottom:1px solid rgba(250,247,240,0.1);margin-bottom:24px}
-.price-label{font-family:var(--sans);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);font-weight:800;margin-bottom:6px}
-.price-body{font-family:var(--body-serif);font-size:14px;color:rgba(250,247,240,0.55);font-style:italic}
-.price-amount{font-family:var(--serif);font-weight:900;font-size:60px;color:var(--paper);letter-spacing:-0.025em;line-height:1}
-.price-amount .currency{font-size:30px;color:rgba(250,247,240,0.5);margin-right:2px}
-.price-features{list-style:none;margin-bottom:28px}
-.price-features li{padding:12px 0;font-family:var(--body-serif);font-size:16px;color:rgba(250,247,240,0.88);display:flex;align-items:flex-start;gap:12px;border-bottom:1px dashed rgba(250,247,240,0.08)}
-.price-features li:last-child{border-bottom:none}
-.price-features li::before{content:'\u276F';color:var(--gold);font-weight:700;font-size:12px;margin-top:4px}
+/* CTA BLOCK --------------------------------------------------------------- */
+.cta-block{
+  background:var(--ink);color:var(--paper);padding:60px 48px;margin:40px 0 60px;
+  position:relative;border:1px solid var(--ink);
+  box-shadow:inset 0 0 0 1px var(--ink),inset 0 0 0 6px transparent,inset 0 0 0 7px var(--gold);
+}
+.cta-block .section-eyebrow{color:var(--gold)}
+.cta-block .section-hed{color:var(--paper)}
+.cta-block .section-hed em{color:var(--gold);font-style:italic}
+.cta-block .section-sub{color:var(--ink-20)}
+.cta-block .hero-ctas .btn-ghost{color:var(--paper);border-color:var(--paper)}
+.cta-block .hero-ctas .btn-ghost:hover{background:var(--paper);color:var(--ink)}
 
-.form{display:grid;gap:14px;margin-top:16px}
-.form input,.form textarea{background:rgba(250,247,240,0.05);border:1px solid rgba(250,247,240,0.15);padding:14px 16px;font-family:var(--body-serif);font-size:16px;color:var(--paper);transition:border 0.15s}
-.form input:focus,.form textarea:focus{outline:none;border-color:var(--gold)}
-.form input::placeholder,.form textarea::placeholder{color:rgba(250,247,240,0.35);font-style:italic}
-.form textarea{min-height:90px;resize:vertical;font-family:inherit}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.form button{padding:16px;background:var(--gold);color:var(--ink);font-family:var(--sans);font-weight:800;font-size:11px;letter-spacing:3px;text-transform:uppercase;border:none;cursor:pointer;transition:background 0.15s}
-.form button:hover{background:#D4B048}
-.form-msg{font-family:var(--body-serif);font-size:15px;color:var(--gold);text-align:center;margin-top:8px;font-style:italic;display:none}
-.form-msg.show{display:block}
+/* COLOPHON FOOTER --------------------------------------------------------- */
+footer{margin-top:40px;padding:30px 0 44px;border-top:3px double var(--ink)}
+footer .wrap{text-align:center}
+.colo-word{font-family:var(--display);font-weight:900;font-size:22px;color:var(--ink);letter-spacing:0.04em;text-transform:uppercase;line-height:1}
+.colo-sub{font-family:var(--display);font-style:italic;color:var(--banker);font-size:17px;margin-top:2px}
+.colo-meta{font-family:var(--smcp);font-size:11px;letter-spacing:4px;color:var(--ink-60);margin-top:14px;text-transform:uppercase}
+.colo-meta a{color:var(--ink-60);border-bottom:1px solid transparent}
+.colo-meta a:hover{color:var(--banker);border-bottom-color:var(--gold)}
+.colo-note{font-family:var(--body);font-style:italic;font-size:14px;color:var(--ink-40);margin-top:14px;max-width:520px;margin-left:auto;margin-right:auto}
 
-/* COLOPHON */
-.colophon{padding:64px 0 40px;text-align:center;border-top:3px double var(--ink);background:var(--paper)}
-.colophon-mark{font-family:var(--serif);font-weight:900;font-size:32px;color:var(--ink);font-style:italic;letter-spacing:-0.01em;margin-bottom:4px}
-.colophon-tagline{font-family:var(--body-serif);font-style:italic;color:var(--ink-60);font-size:16px;margin-bottom:28px}
-.colophon-meta{font-family:var(--sans);font-size:10px;color:var(--ink-60);letter-spacing:2px;text-transform:uppercase;font-weight:600;line-height:2}
-.colophon-meta strong{color:var(--ink)}
-.colophon-links{margin-top:24px;font-family:var(--sans);font-size:11px;color:var(--ink-60);letter-spacing:1px}
-.colophon-links a{color:var(--gold-deep);font-weight:700;margin:0 10px;border-bottom:1px dotted var(--gold-deep);padding-bottom:1px}
-
-@media(max-width:1000px){
-  .hero h1{font-size:52px}
-  .hero-deck{font-size:18px}
-  .stats-grid{grid-template-columns:repeat(2,1fr);gap:32px 0}
-  .stat{border-right:none;padding:0 16px}
-  .stat:nth-child(odd){border-right:1px solid var(--ink-20)}
-  .section-title{font-size:36px}
-  .feature-hero{padding:32px}
-  .feature-hero .row{grid-template-columns:1fr;gap:28px}
-  .fh-title{font-size:36px}
-  .featured-grid,.rest-grid{grid-template-columns:1fr}
-  .editors-title,.order-title{font-size:32px}
-  .form-grid{grid-template-columns:1fr}
-  .wrap{padding:0 24px}
+/* RESPONSIVE -------------------------------------------------------------- */
+@media(max-width:820px){
+  body{font-size:18px;line-height:1.55}
+  .wrap{padding:0 22px}
+  .mast{padding:28px 0 0}
+  .mast-word{font-size:32px}
+  .mast-sub{font-size:22px}
+  .mast-hairline{max-width:320px;margin-top:18px}
+  .mast-nav{gap:22px;letter-spacing:2px;font-size:12px;padding:12px 0 16px}
+  .deco{margin:24px 0}
+  .deco::before,.deco::after{flex:0 1 70px}
+  .hero{padding:28px 0 16px}
+  .hero-dateline{font-size:10px;letter-spacing:3px;margin-bottom:16px}
+  .hero h1{font-size:40px}
+  .hero-deck{font-size:17px;margin-bottom:22px}
+  .btn{padding:12px 18px;font-size:11px;letter-spacing:2.5px}
+  .kpis{grid-template-columns:1fr 1fr;margin-top:32px}
+  .kpi{padding:16px 14px;border-bottom:1px solid var(--ink-20)}
+  .kpi:nth-child(even){border-right:none}
+  .kpi:nth-last-child(-n+2){border-bottom:none}
+  .kpi-v{font-size:28px}
+  .steps{padding:16px 0 8px}
+  .step-grid{grid-template-columns:1fr;gap:14px}
+  .step{padding:24px 22px}
+  .step-num{font-size:44px;margin-bottom:10px}
+  .step-hed{font-size:20px}
+  .step-body{font-size:16px}
+  .section-hed{font-size:30px}
+  .section-sub{font-size:16px;margin-bottom:28px}
+  .gallery{padding:12px 0 24px}
+  .portal-grid,.portal-grid.secondary{grid-template-columns:1fr;gap:14px}
+  .portal{padding:22px}
+  .portal-ticker{font-size:26px}
+  .practice{padding:24px 0 16px}
+  .practice h2{font-size:28px}
+  .practice p{font-size:17px}
+  .practice p:first-of-type::first-letter{font-size:46px}
+  .cta-block{padding:36px 26px;margin:28px 0 40px}
+  footer{margin-top:24px;padding:24px 0 36px}
+  .colo-word{font-size:20px}
+  .colo-sub{font-size:16px}
+  .colo-meta{letter-spacing:2.5px;font-size:10px}
 }
 </style>
 </head>
 <body>
 
-<header class="masthead">
+<header class="mast">
   <div class="wrap">
-    <div class="masthead-brand">Levin Capital <em>Research</em></div>
-    <div class="masthead-meta">
-      <strong>Institutional Equity Research</strong><br>
-      By the editor of The LCS Review
-    </div>
+    <div class="mast-word">Levin Capital</div>
+    <div class="mast-sub">Research</div>
+    <div class="mast-hairline"></div>
+    <nav class="mast-nav">
+      <a href="/" class="active">Cover</a>
+      <a href="/leaderboard">Leaderboard</a>
+      <a href="/p/top10">Top Ten</a>
+      <a href="/submit">Submit</a>
+    </nav>
   </div>
 </header>
 
 <section class="hero">
   <div class="wrap">
-    <div class="hero-kicker">From the Editor of The LCS Review</div>
-    <h1>Institutional research,<br/><em>on demand.</em></h1>
-    <p class="hero-deck">Bespoke equity research engagements for allocators, advisors, and investment committees. Six-page portals. Source-tagged. Delivered in forty-eight hours.</p>
-    <div class="hero-byline">By <strong>Evan Ratner</strong> &middot; Founding Editor</div>
+    <div class="hero-dateline">Private Notes on Public Markets</div>
+    <h1>Every call, <em>committed to the book.</em></h1>
+    <p class="hero-deck">The Ledger compiles members' thesis calls, locks their entry price at the close, and tracks each position against the market nightly. No votes. No editorializing. Just the price, settled.</p>
     <div class="hero-ctas">
-      <a href="/submit" class="btn btn-primary">Submit a Call</a>
-      <a href="/leaderboard" class="btn btn-secondary">The Leaderboard</a>
+      <a href="/leaderboard" class="btn btn-gold">Browse The Ledger →</a>
+      <a href="/submit" class="btn btn-ghost">Submit a note</a>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-v">${portfolio.length}</div><div class="kpi-l">Live portals</div></div>
+      <div class="kpi"><div class="kpi-v">48<em>hr</em></div><div class="kpi-l">Brief turnaround</div></div>
+      <div class="kpi"><div class="kpi-v">I.</div><div class="kpi-l">First note is free</div></div>
+      <div class="kpi"><div class="kpi-v">∞</div><div class="kpi-l">No votes, no bias</div></div>
     </div>
   </div>
 </section>
 
-<section class="stats-row">
-  <div class="stats-grid">
-    <div class="stat">
-      <div class="stat-v">VIII</div>
-      <div class="stat-l">Live Engagements</div>
-    </div>
-    <div class="stat">
-      <div class="stat-v">48<em>hr</em></div>
-      <div class="stat-l">Turnaround</div>
-    </div>
-    <div class="stat">
-      <div class="stat-v">6</div>
-      <div class="stat-l">Pages Per Portal</div>
-    </div>
-    <div class="stat">
-      <div class="stat-v">100<em>%</em></div>
-      <div class="stat-l">Source-Attributed</div>
-    </div>
-  </div>
-</section>
+<div class="deco"><span></span><span class="diamond"></span><span></span></div>
 
-<section id="gallery" class="well">
+<section class="steps">
   <div class="wrap">
-    <div class="section-header">
-      <div class="section-kicker">The Portfolio</div>
-      <h2 class="section-title">Live <em>Engagements</em></h2>
-      <p class="section-deck">Eight portals across mergers, special situations, pre-IPO, compounders, and cyclical setups. Every number traced to an original source.</p>
-    </div>
-
-    ${renderFeatureHero(featured[0])}
-
-    <div class="featured-grid">
-      ${featured.slice(1).map((p, i) => renderFeaturedCard(p, i + 2)).join('')}
-    </div>
-
-    <div class="rest-grid">
-      ${rest.map(p => renderRestCard(p)).join('')}
-    </div>
-  </div>
-</section>
-
-<section class="editors">
-  <div class="editors-inner">
-    <div class="editors-kicker">&mdash; A Note from the Editor &mdash;</div>
-    <h2 class="editors-title">On the business of <em>research</em></h2>
-    <div class="editors-body">
-      <p>Most financial research is written under a conflict of interest &mdash; by sell-side analysts whose firms are also the bank's investment banking clients, or by newsletters monetized through traffic. The research you find here is neither. It is commissioned directly, delivered privately, and written with the same standards of source attribution I apply to pieces published in The LCS Review.</p>
-      <p>An engagement produces six linked pages: a landing, a long-form memo, an interactive financial model, a fourteen-slide presentation, a consensus view, and twenty hand-crafted management questions. A PDF comes with it. Every historical figure is tagged to a 10-K, a 10-Q, an earnings transcript, or a named market-data source. Forward estimates are flagged as such.</p>
-      <p>If you need coverage on a specific ticker &mdash; whether for a client meeting, an internal pitch, or your own ongoing process &mdash; write in below. I'll get back to you the same day.</p>
-    </div>
-    <div class="editors-sig">
-      <div class="sig-name">Evan Ratner</div>
-      <div class="sig-title">Founding Editor</div>
-    </div>
-  </div>
-</section>
-
-<section id="order" class="order">
-  <div class="order-inner">
-    <div class="wrap">
-      <div class="order-kicker">&mdash; Commission a Portal &mdash;</div>
-      <h2 class="order-title">Request a bespoke <em>engagement</em></h2>
-      <p class="order-deck">One-off research engagement. Your ticker. Delivered within forty-eight hours to a private URL. No subscription required.</p>
-
-      <div class="price-card">
-        <div class="price-top">
-          <div>
-            <div class="price-label">The Engagement</div>
-            <div class="price-body">One-off &middot; Private URL &middot; Any ticker, any sector</div>
-          </div>
-          <div class="price-amount"><span class="currency">$</span>149</div>
-        </div>
-        <ul class="price-features">
-          <li>Six linked pages: landing, memo, deck, model, consensus, management questions</li>
-          <li>Interactive valuation model with Bull / Base / Street / Bear scenarios</li>
-          <li>Source attribution on every historical figure &mdash; 10-K, transcript, IR materials</li>
-          <li>Print-ready PDF for distribution</li>
-          <li>Private URL, not indexed publicly &mdash; share only with your team</li>
-          <li>Delivered within forty-eight hours of confirmation</li>
-        </ul>
-        <form class="form" id="requestForm" onsubmit="submitRequest(event)">
-          <input type="text" name="ticker" placeholder="Ticker symbol" required maxlength="8">
-          <div class="form-grid">
-            <input type="email" name="email" placeholder="Your email" required>
-            <input type="text" name="firm" placeholder="Firm (optional)">
-          </div>
-          <textarea name="notes" placeholder="Particular angle, focus, or context? (optional)"></textarea>
-          <button type="submit">Commission &mdash; $149</button>
-          <div class="form-msg" id="formMsg"></div>
-        </form>
+    <div class="section-eyebrow">— The Practice —</div>
+    <h2 class="section-hed"><strong>Thesis in.</strong> <em>Brief out. Market keeps the score.</em></h2>
+    <p class="section-sub">Three movements, no gatekeepers. You commit the call; the house handles the research and the ledger.</p>
+    <div class="step-grid">
+      <div class="step">
+        <div class="step-num">I.</div>
+        <div class="step-hed">Commit your note.</div>
+        <div class="step-body">Ticker, direction, price target, and a few hundred words on why. Entry price is locked to the current quote at the moment of submission.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">II.</div>
+        <div class="step-hed">The house writes the brief.</div>
+        <div class="step-body">A source-tagged research note built from your thesis: business summary, drivers, risks, and the path to target. Published within minutes.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">III.</div>
+        <div class="step-hed">The market settles it.</div>
+        <div class="step-body">Prices refresh nightly. Your note is ranked against every other note on the book by return since entry. The Ledger reports; it does not prescribe.</div>
       </div>
     </div>
   </div>
 </section>
 
-<footer class="colophon">
-  <div class="colophon-mark">Levin Capital <em>Research</em></div>
-  <div class="colophon-tagline">Institutional coverage on demand</div>
-  <div class="colophon-meta">
-    <strong>Established 2019</strong> &middot; A Levin Capital Strategies imprint &middot; By the editor of The LCS Review<br>
-    Typeset in Playfair Display &amp; Cormorant Garamond
+<div class="deco"><span></span><span class="diamond"></span><span></span></div>
+
+<section class="gallery">
+  <div class="wrap">
+    <div class="section-eyebrow">— Live Portals —</div>
+    <h2 class="section-hed"><em>Selected engagements,</em> <strong>on the wire.</strong></h2>
+    <p class="section-sub">A sample of research portals already in circulation. Each is a full thesis with model, comparables, and market-tracked performance.</p>
+    ${featured.length > 0 ? `<div class="portal-grid">
+      ${featured.map(p => renderPortal(p, false)).join('')}
+    </div>` : ''}
+    ${rest.length > 0 ? `<div class="portal-grid secondary">
+      ${rest.map(p => renderPortal(p, true)).join('')}
+    </div>` : ''}
   </div>
-  <div class="colophon-links">
-    Related reading &middot;
-    <a href="https://cafecito-ai.com/lcs/magazine/">The LCS Review</a>
-    <a href="https://cafecito-ai.com/lcs/ratlinks/">Ratlinks</a>
+</section>
+
+<section class="practice">
+  <div class="wrap">
+    <h2>On <em>the practice.</em></h2>
+    <p>Research writing has always been a private correspondence first. An analyst commits a view to paper, a partner reads it over breakfast, the position is sized or declined. What gets lost in the louder versions of this business, the ones that run on television and on Twitter, is the discipline of the margin notes.</p>
+    <p>This is a place for the margin notes. Theses committed while they are still inconvenient. Entry prices locked while they are still uncertain. Scores kept quietly, by the market itself. If the work is good, the book will say so.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="cta-block">
+      <div class="section-eyebrow">— An Invitation —</div>
+      <h2 class="section-hed"><em>Open</em> the book.</h2>
+      <p class="section-sub">The first note is free. You keep the attribution. The market tells you whether you were right.</p>
+      <div class="hero-ctas">
+        <a href="/submit" class="btn btn-gold">Submit your first note →</a>
+        <a href="/leaderboard" class="btn btn-ghost">Read The Ledger</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="colo-word">Levin Capital</div>
+    <div class="colo-sub">Research</div>
+    <div class="colo-meta">© ${new Date().getFullYear()} · <a href="/leaderboard">Leaderboard</a> &middot; <a href="/submit">Submit</a> &middot; <a href="/p/top10">Top Ten</a></div>
+    <div class="colo-note">Nothing on this site is investment advice.</div>
   </div>
 </footer>
 
-<script>
-async function submitRequest(e) {
-  e.preventDefault();
-  const form = e.target;
-  const btn = form.querySelector('button');
-  const msg = document.getElementById('formMsg');
-  const data = Object.fromEntries(new FormData(form));
-  btn.disabled = true;
-  btn.textContent = 'SENDING...';
-  try {
-    const r = await fetch('/api/request', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(data),
-    });
-    const j = await r.json();
-    if (j.success) {
-      msg.textContent = 'Thank you. ' + j.message;
-      msg.classList.add('show');
-      form.reset();
-    } else {
-      msg.textContent = j.error || 'An error occurred. Please try again.';
-      msg.classList.add('show');
-    }
-  } catch(err) {
-    msg.textContent = 'Network error. Please try again.';
-    msg.classList.add('show');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Commission — $149';
-  }
-}
-(new Image()).src = '/api/pixel?p=home_b';
-<\/script>
 </body>
 </html>`;
 }
 
-function renderFeatureHero(p: PortalEntry | undefined): string {
-  if (!p) return '';
-  return `<a href="${p.url}" target="_blank" rel="noopener" class="feature-hero">
-    <div class="row">
-      <div>
-        <div class="fh-kicker">Cover Engagement &middot; ${p.category}</div>
-        <h3 class="fh-title">${p.company}</h3>
-        <p class="fh-deck">${p.thesis}</p>
-        <div class="fh-stats">
-          <div>
-            <div class="fh-stat-v">${p.headline_stat}</div>
-            <div class="fh-stat-l">${p.headline_label}</div>
-          </div>
-          <div>
-            <div class="fh-stat-v">${p.rating}</div>
-            <div class="fh-stat-l">LCS Rating</div>
-          </div>
-        </div>
-        <span class="fh-read">Read the Portal</span>
-      </div>
-      <div>
-        <div style="font-family:var(--serif);font-weight:900;font-size:180px;color:rgba(184,151,62,0.15);line-height:0.85;letter-spacing:-0.05em;text-align:right">${p.ticker}</div>
-      </div>
-    </div>
-  </a>`;
-}
-
-function renderFeaturedCard(p: PortalEntry, page: number): string {
-  return `<a href="${p.url}" target="_blank" rel="noopener" class="portal-card" data-page="${String(page).padStart(3, '0')}">
-    <div class="portal-kicker">${p.category} &middot; ${p.pattern}</div>
+function renderPortal(p: PortalEntry, compact: boolean): string {
+  return `<a href="${p.url}" class="portal ${compact ? 'compact' : ''}" target="_blank" rel="noopener">
     <div class="portal-ticker">${p.ticker}</div>
-    <h3 class="portal-title">${p.company}</h3>
-    <p class="portal-deck">${p.thesis}</p>
-    <div class="portal-footer">
+    <div class="portal-co">${p.company}</div>
+    <span class="portal-cat">${p.category}</span>
+    <div class="portal-thesis">${p.thesis}</div>
+    <div class="portal-foot">
       <div>
         <div class="portal-stat">${p.headline_stat}</div>
-        <div class="portal-stat-label">${p.headline_label}</div>
+        <div class="portal-stat-l">${p.headline_label}</div>
       </div>
-      <span class="portal-read">Read</span>
-    </div>
-  </a>`;
-}
-
-function renderRestCard(p: PortalEntry): string {
-  return `<a href="${p.url}" target="_blank" rel="noopener" class="portal-card rest-card">
-    <div class="portal-kicker">${p.category}</div>
-    <div class="portal-ticker">${p.ticker}</div>
-    <h3 class="portal-title">${p.company}</h3>
-    <p class="portal-deck">${p.thesis}</p>
-    <div class="portal-footer">
-      <div>
-        <div class="portal-stat">${p.headline_stat}</div>
-        <div class="portal-stat-label">${p.headline_label}</div>
-      </div>
-      <span class="portal-read">Read</span>
+      <div class="portal-rating ${p.rating_class}">${p.rating}</div>
     </div>
   </a>`;
 }
