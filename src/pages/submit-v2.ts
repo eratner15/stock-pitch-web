@@ -1,4 +1,5 @@
-export function renderSubmitV2(brand: 'stockpitch' | 'levincap'): string {
+export function renderSubmitV2(brand: 'stockpitch' | 'levincap', prefillTicker?: string): string {
+  const pre = (prefillTicker || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 8);
   const isLevin = brand === 'levincap';
   const accent = isLevin ? '#B8973E' : '#2EBD6B';
   const accentDeep = isLevin ? '#8B6F28' : '#1D9A54';
@@ -214,7 +215,7 @@ body{font-family:var(--sans);background:var(--bg);color:var(--ink);-webkit-font-
       <p class="hint">Type a symbol. We'll lock in today's price as your entry.</p>
 
       <div class="ticker-box">
-        <input type="text" class="ticker-input" id="ticker" placeholder="TICKER" maxlength="8" autocomplete="off" spellcheck="false" oninput="onTickerInput(this)">
+        <input type="text" class="ticker-input" id="ticker" placeholder="TICKER" maxlength="8" autocomplete="off" spellcheck="false" oninput="onTickerInput(this)" value="${pre}">
         <div class="price-reveal" id="priceReveal">
           <div class="company-info">
             <div class="company" id="company">—</div>
@@ -703,6 +704,13 @@ function fireConfetti() {
 // Init
 setProgress();
 updateNav();
+// Kick off prefill lookup if server rendered a ticker value
+(function(){
+  const t = document.getElementById('ticker');
+  if (t && t.value && t.value.trim()) {
+    lookupTicker(t.value.trim().toUpperCase());
+  }
+})();
 </script>
 
 </body>

@@ -110,18 +110,28 @@ app.use('*', async (c, next) => {
 // ==========================================================================
 // LANDING
 // ==========================================================================
-app.get('/', (c) => {
+app.get('/', async (c) => {
   const brand = c.get('brand');
+  let top: LeaderboardRow[] = [];
+  try {
+    const rows = await buildLeaderboard(c.env, brand);
+    top = rows.slice(0, 5);
+  } catch (err) {
+    console.error('Landing leaderboard fetch failed:', err);
+  }
   const html = brand === 'levincap'
-    ? renderLevinCapLanding(PORTFOLIO)
-    : renderStockPitchLanding(PORTFOLIO);
+    ? renderLevinCapLanding(PORTFOLIO, top)
+    : renderStockPitchLanding(PORTFOLIO, top);
   return c.html(html);
 });
 
 // ==========================================================================
 // SUBMIT — progressive step-based flow
 // ==========================================================================
-app.get('/submit', (c) => c.html(renderSubmitV2(c.get('brand'))));
+app.get('/submit', (c) => {
+  const ticker = (c.req.query('ticker') || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 8);
+  return c.html(renderSubmitV2(c.get('brand'), ticker || undefined));
+});
 
 // ==========================================================================
 // LEADERBOARD

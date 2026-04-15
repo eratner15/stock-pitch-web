@@ -1,34 +1,37 @@
 import type { PortalEntry } from '../portfolio';
+import type { LeaderboardRow } from '../pages/leaderboard';
+import { escapeHtml } from '../lib/security';
 
 /**
- * Stock Pitch homepage — 80s broadsheet aesthetic, matches leaderboard system.
- * Abril Fatface heads + Lora body, cream paper, red power accent, navy pinstripes.
- * No fabricated credentials. Readable on mobile.
+ * Stock Pitch homepage — Perplexity/v0-style simplicity.
+ * Hero = single ticker input, do-one-thing. Below: proof (board top + latest).
+ * Keeps 80s broadsheet aesthetic (Abril Fatface, cream paper, red accent) but
+ * cuts 70% of the chrome of the old marketing layout.
  */
-export function renderStockPitchLanding(portfolio: PortalEntry[]): string {
+export function renderStockPitchLanding(portfolio: PortalEntry[], top: LeaderboardRow[] = []): string {
   const featured = portfolio.filter(p => p.featured).slice(0, 3);
-  const rest = portfolio.filter(p => !p.featured).slice(0, 6);
+  const others = portfolio.filter(p => !p.featured).slice(0, 3);
+  const reports = [...featured, ...others].slice(0, 6);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Stock Pitch — submit a thesis, get an AI-generated research brief, let the market keep score. The leaderboard ranks every call by return since entry.">
-<meta property="og:title" content="Stock Pitch — pitch a stock, let the market score it">
-<meta property="og:description" content="Submit a thesis. AI writes the brief. Market keeps score.">
+<meta name="description" content="Pitch a ticker. Get a research brief in 2 minutes. The market keeps score.">
+<meta property="og:title" content="Stock Pitch — pitch a ticker, get a brief">
+<meta property="og:description" content="Enter a ticker. Get a research brief. Market keeps score.">
 <meta name="theme-color" content="#1A1814">
-<title>Stock Pitch — Pitch a stock. The market keeps score.</title>
+<title>Stock Pitch</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --paper:#F4EEE1;
   --paper-deep:#EBE2D0;
   --ink:#1A1814;
-  --ink-80:#2A251E;
   --ink-60:#4E463D;
   --ink-40:#7E7468;
   --ink-20:#B9AE9C;
@@ -42,160 +45,133 @@ export function renderStockPitchLanding(portfolio: PortalEntry[]): string {
   --body:'Lora',Georgia,serif;
   --mono:'IBM Plex Mono',ui-monospace,monospace;
 }
-html{background:var(--paper);scroll-behavior:smooth}
+html{background:var(--paper)}
 body{
-  font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.6;font-size:17px;
+  font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.55;font-size:17px;
   -webkit-font-smoothing:antialiased;
   background-image:
-    repeating-linear-gradient(90deg,transparent 0 23px,rgba(14,35,64,0.035) 23px 24px),
-    radial-gradient(circle at 20% 10%,rgba(183,20,31,0.04),transparent 55%),
-    radial-gradient(circle at 80% 90%,rgba(14,35,64,0.05),transparent 60%);
+    repeating-linear-gradient(90deg,transparent 0 23px,rgba(14,35,64,0.03) 23px 24px);
   background-attachment:fixed;
 }
 a{color:inherit;text-decoration:none}
-.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+.wrap{max-width:920px;margin:0 auto;padding:0 28px}
 
-/* MASTHEAD ---------------------------------------------------------------- */
-.masthead{background:var(--paper);border-bottom:2px solid var(--ink);padding:18px 0 16px;position:relative}
-.masthead::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;background:var(--ink)}
-.masthead .wrap{display:flex;justify-content:space-between;align-items:center;gap:20px}
-.mh-brand{font-family:var(--display);font-size:30px;line-height:0.9;color:var(--ink);letter-spacing:-0.01em;display:flex;align-items:baseline;gap:10px}
-.mh-brand .dot{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--red);transform:translateY(-4px)}
+/* MASTHEAD — tiny, one line */
+.masthead{padding:18px 0 16px;border-bottom:1px solid var(--rule)}
+.masthead .wrap{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.mh-brand{font-family:var(--display);font-size:26px;line-height:1;color:var(--ink);display:flex;align-items:baseline;gap:8px}
+.mh-brand .dot{width:10px;height:10px;border-radius:50%;background:var(--red);transform:translateY(-3px)}
 .mh-nav{display:flex;align-items:center;gap:22px;font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
-.mh-nav a{color:var(--ink-60);padding:6px 2px;border-bottom:2px solid transparent;transition:border 0.15s,color 0.15s}
-.mh-nav a:hover{color:var(--ink);border-bottom-color:var(--red)}
-.mh-cta{
-  display:inline-block;padding:10px 18px;background:var(--red);color:var(--paper);
-  font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;
-  box-shadow:3px 3px 0 var(--ink);transition:transform 0.12s,box-shadow 0.12s;
-}
-.mh-cta:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink);color:var(--paper)}
+.mh-nav a{color:var(--ink-60);transition:color 0.15s}
+.mh-nav a:hover{color:var(--red)}
 
-/* HERO -------------------------------------------------------------------- */
-.hero{padding:72px 0 48px}
-.hero-kicker{display:inline-block;background:var(--ink);color:var(--paper);padding:6px 12px;font-family:var(--mono);font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:600;margin-bottom:22px}
+/* HERO — the whole point */
+.hero{padding:72px 0 64px;text-align:center}
 .hero h1{
-  font-family:var(--display);font-size:clamp(56px,8vw,108px);line-height:0.95;
-  color:var(--ink);letter-spacing:-0.025em;margin-bottom:22px;max-width:16ch;
+  font-family:var(--display);font-size:clamp(52px,9vw,96px);line-height:0.95;
+  color:var(--ink);letter-spacing:-0.025em;margin-bottom:10px;
 }
 .hero h1 em{color:var(--red);font-style:italic}
-.hero-deck{
-  font-family:var(--body);font-style:italic;font-size:21px;line-height:1.45;color:var(--ink-60);
-  max-width:640px;border-left:3px solid var(--red);padding-left:18px;margin-bottom:30px;
+.hero-tag{
+  font-family:var(--body);font-style:italic;font-size:19px;color:var(--ink-60);margin-bottom:38px;
 }
-.hero-ctas{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
-.btn{
-  display:inline-flex;align-items:center;gap:8px;padding:14px 24px;
-  font-family:var(--mono);font-weight:700;font-size:12px;letter-spacing:2px;text-transform:uppercase;
-  transition:transform 0.12s,box-shadow 0.12s,background 0.12s;cursor:pointer;border:none;
+.ticker-form{
+  display:flex;gap:0;max-width:560px;margin:0 auto 22px;
+  border:2px solid var(--ink);background:var(--paper);
+  box-shadow:6px 6px 0 var(--ink);
+  transition:box-shadow 0.12s,transform 0.12s;
 }
-.btn-primary{background:var(--red);color:var(--paper);box-shadow:4px 4px 0 var(--ink)}
-.btn-primary:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--ink);color:var(--paper)}
-.btn-ghost{background:transparent;color:var(--ink);border:2px solid var(--ink)}
-.btn-ghost:hover{background:var(--ink);color:var(--paper)}
-
-/* KPI ROW ----------------------------------------------------------------- */
-.kpis{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:48px;
-  border-top:4px double var(--ink);border-bottom:1px solid var(--ink);
+.ticker-form:focus-within{box-shadow:8px 8px 0 var(--red);transform:translate(-1px,-1px)}
+.ticker-form input{
+  flex:1;padding:18px 22px;border:none;background:transparent;
+  font-family:var(--mono);font-size:24px;font-weight:700;letter-spacing:4px;
+  color:var(--ink);text-transform:uppercase;outline:none;min-width:0;
 }
-.kpi{padding:22px 22px;border-right:1px dotted var(--ink-20)}
-.kpi:last-child{border-right:none}
-.kpi-v{font-family:var(--display);font-size:42px;line-height:0.9;color:var(--ink);letter-spacing:-0.02em}
-.kpi-v .unit{color:var(--red);font-size:24px;margin-left:2px}
-.kpi-l{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-40);margin-top:8px;font-weight:600}
-
-/* THREE-STEP -------------------------------------------------------------- */
-.steps{padding:72px 0 40px}
-.section-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:4px;text-transform:uppercase;color:var(--red);font-weight:700;margin-bottom:12px}
-.section-hed{font-family:var(--display);font-size:clamp(38px,5vw,56px);line-height:1;color:var(--ink);letter-spacing:-0.02em;margin-bottom:14px}
-.section-sub{font-family:var(--body);font-style:italic;font-size:19px;color:var(--ink-60);max-width:640px;margin-bottom:40px}
-.step-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-.step{background:var(--paper);border:1px solid var(--rule);padding:28px 26px;position:relative;box-shadow:4px 4px 0 var(--ink)}
-.step-num{font-family:var(--display);font-size:60px;line-height:0.8;color:var(--red);margin-bottom:8px;letter-spacing:-0.02em}
-.step-hed{font-family:var(--display);font-size:26px;line-height:1.05;color:var(--ink);margin-bottom:10px;letter-spacing:-0.01em}
-.step-body{font-family:var(--body);font-size:16px;line-height:1.55;color:var(--ink-60)}
-
-/* GALLERY ----------------------------------------------------------------- */
-.gallery{padding:48px 0 72px;border-top:4px double var(--ink);margin-top:32px}
-.portal-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:24px}
-.portal-grid.secondary{grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px}
-.portal{background:var(--paper);border:1px solid var(--rule);padding:24px;transition:transform 0.12s,box-shadow 0.12s;display:block;position:relative}
-.portal:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--ink)}
-.portal-ticker{font-family:var(--display);font-size:32px;line-height:0.95;color:var(--ink);letter-spacing:-0.01em;margin-bottom:2px}
-.portal-co{font-family:var(--body);font-style:italic;font-size:15px;color:var(--ink-60);margin-bottom:14px}
-.portal-cat{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--navy);border:1px solid var(--navy);padding:2px 8px;margin-bottom:14px;font-weight:600}
-.portal-thesis{font-family:var(--body);font-size:15px;line-height:1.55;color:var(--ink-80);margin-bottom:18px}
-.portal-foot{display:flex;justify-content:space-between;align-items:baseline;padding-top:14px;border-top:1px dotted var(--ink-20)}
-.portal-stat{font-family:var(--display);font-size:24px;color:var(--bull);line-height:1}
-.portal-stat-l{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-40);margin-top:2px;font-weight:600}
-.portal-rating{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:700}
-.portal-rating.buy{color:var(--bull)}
-.portal-rating.ow{color:var(--bull)}
-.portal-rating.hold{color:var(--ink-40)}
-.portal-rating.part{color:var(--navy)}
-.portal.compact{padding:20px}
-.portal.compact .portal-ticker{font-size:24px}
-.portal.compact .portal-thesis{font-size:14px;margin-bottom:14px}
-
-/* CTA BLOCK --------------------------------------------------------------- */
-.cta-block{
-  background:var(--ink);color:var(--paper);padding:56px 40px;margin:48px 0 64px;
-  position:relative;border:2px solid var(--ink);box-shadow:6px 6px 0 var(--red);
+.ticker-form input::placeholder{color:var(--ink-40);letter-spacing:4px;font-weight:500}
+.ticker-form button{
+  padding:18px 28px;background:var(--red);color:var(--paper);border:none;cursor:pointer;
+  font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:2px;text-transform:uppercase;
+  transition:background 0.12s;
 }
-.cta-block .section-eyebrow{color:var(--gold)}
-.cta-block .section-hed{color:var(--paper)}
-.cta-block .section-hed em{color:var(--gold);font-style:italic}
-.cta-block .section-sub{color:var(--ink-20);margin-bottom:28px}
-.cta-block .btn-primary{box-shadow:4px 4px 0 var(--gold)}
-.cta-block .btn-primary:hover{box-shadow:5px 5px 0 var(--gold)}
+.ticker-form button:hover{background:#900d17}
+.chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:4px}
+.chip{
+  padding:8px 14px;border:1px dotted var(--ink-40);
+  font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:1.5px;color:var(--ink-60);
+  cursor:pointer;transition:border 0.12s,color 0.12s,background 0.12s;
+}
+.chip:hover{border-color:var(--red);border-style:solid;color:var(--red);background:rgba(183,20,31,0.06)}
 
-/* FOOTER ------------------------------------------------------------------ */
-footer{margin-top:40px;padding:32px 0 56px;border-top:1px solid var(--ink);border-bottom:6px double var(--ink);
+/* LEADERBOARD TEASER */
+.section{padding:36px 0 40px;border-top:1px dotted var(--ink-20)}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;margin-bottom:18px}
+.section-hed{font-family:var(--display);font-size:28px;line-height:1;color:var(--ink);letter-spacing:-0.01em}
+.section-hed em{color:var(--red);font-style:italic}
+.section-link{font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-60);border-bottom:1px solid var(--ink-20);padding-bottom:2px;transition:color 0.15s,border 0.15s}
+.section-link:hover{color:var(--red);border-color:var(--red)}
+
+.lb-preview{border:1px solid var(--rule);background:var(--paper)}
+.lb-row{
+  display:grid;grid-template-columns:36px 1fr auto auto;gap:14px;
+  padding:12px 16px;border-bottom:1px solid var(--ink-20);align-items:center;
+  font-family:var(--mono);font-size:13px;transition:background 0.12s;
+}
+.lb-row:last-child{border-bottom:none}
+.lb-row:hover{background:rgba(183,20,31,0.04)}
+.lb-rank{font-family:var(--display);font-size:22px;line-height:1;color:var(--ink-40);letter-spacing:-0.01em}
+.lb-analyst{font-family:var(--body);font-size:14px;color:var(--ink);font-weight:600;letter-spacing:0}
+.lb-analyst .tkr{font-family:var(--mono);font-weight:700;color:var(--ink);margin-left:8px;font-size:12px;letter-spacing:1px}
+.lb-dir{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;color:var(--ink-40);text-transform:uppercase;font-weight:600}
+.lb-ret{font-family:var(--display);font-size:18px;line-height:1;letter-spacing:-0.01em;min-width:70px;text-align:right}
+.lb-ret.pos{color:var(--bull)}
+.lb-ret.neg{color:var(--bear)}
+
+.lb-empty{padding:28px 16px;text-align:center;font-family:var(--body);font-style:italic;color:var(--ink-60);font-size:15px}
+.lb-empty a{color:var(--red);border-bottom:1px solid var(--red)}
+
+/* LATEST REPORTS */
+.reports-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.report{
+  background:var(--paper);border:1px solid var(--rule);padding:18px;
+  display:block;transition:transform 0.1s,box-shadow 0.1s;
+}
+.report:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}
+.report-tkr{font-family:var(--display);font-size:26px;line-height:1;color:var(--ink);margin-bottom:2px}
+.report-co{font-family:var(--body);font-style:italic;font-size:13px;color:var(--ink-60);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.report-thesis{font-family:var(--body);font-size:14px;line-height:1.5;color:var(--ink-60);margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.report-foot{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px dotted var(--ink-20);font-family:var(--mono);font-size:11px;letter-spacing:1.5px}
+.report-stat{font-family:var(--display);font-size:18px;line-height:1}
+.report-stat.pos{color:var(--bull)}
+.report-stat.neg{color:var(--bear)}
+.report-rating{color:var(--ink-40);text-transform:uppercase;font-weight:700}
+
+/* FOOTER — minimal */
+footer{margin-top:40px;padding:22px 0 36px;border-top:1px solid var(--rule);
   font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--ink-40);text-transform:uppercase}
-footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
-footer a{color:var(--ink-60);border-bottom:1px solid var(--ink-20)}
-footer .note{font-family:var(--body);font-style:italic;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink-40)}
+footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+footer .note{font-family:var(--body);font-style:italic;text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink-40)}
 
-/* RESPONSIVE -------------------------------------------------------------- */
-@media(max-width:860px){
-  body{font-size:17px}
-  .masthead{padding:14px 0 12px}
-  .masthead .wrap{gap:12px}
-  .mh-brand{font-size:22px}
-  .mh-brand .dot{width:9px;height:9px;transform:translateY(-3px)}
-  .mh-nav{gap:12px;font-size:10px;letter-spacing:1px}
-  .mh-nav a:not(.mh-cta){display:none}
-  .mh-cta{padding:9px 14px;font-size:10px;letter-spacing:1.5px}
-  .hero{padding:44px 0 32px}
-  .hero h1{font-size:44px;max-width:100%}
-  .hero-deck{font-size:17px;padding-left:14px}
-  .hero-kicker{font-size:10px;padding:5px 10px;margin-bottom:18px}
-  .hero-ctas{gap:10px}
-  .btn{padding:12px 18px;font-size:11px;letter-spacing:1.5px}
-  .kpis{grid-template-columns:1fr 1fr;margin-top:32px}
-  .kpi{padding:16px 18px;border-bottom:1px dotted var(--ink-20)}
-  .kpi:nth-child(odd){border-right:1px dotted var(--ink-20)}
-  .kpi:nth-child(even){border-right:none}
-  .kpi:nth-last-child(-n+2){border-bottom:none}
-  .kpi-v{font-size:30px}
-  .kpi-v .unit{font-size:18px}
-  .steps{padding:48px 0 28px}
-  .section-hed{font-size:32px}
-  .section-sub{font-size:16px;margin-bottom:28px}
-  .step-grid{grid-template-columns:1fr;gap:14px}
-  .step{padding:24px 22px}
-  .step-num{font-size:48px}
-  .step-hed{font-size:22px}
-  .gallery{padding:36px 0 48px;margin-top:16px}
-  .portal-grid,.portal-grid.secondary{grid-template-columns:1fr;gap:12px}
-  .portal{padding:22px}
-  .portal-ticker{font-size:28px}
-  .cta-block{padding:36px 24px;margin:36px 0 48px;box-shadow:4px 4px 0 var(--red)}
-  footer{padding:22px 0 40px;margin-top:28px}
-  footer .wrap{flex-direction:column;gap:10px;text-align:center;letter-spacing:1.5px}
-  footer .note{font-size:12px}
+@media(max-width:720px){
   .wrap{padding:0 20px}
+  .mh-brand{font-size:22px}
+  .mh-nav{gap:14px;font-size:10px;letter-spacing:1px}
+  .hero{padding:44px 0 44px}
+  .hero h1{font-size:48px;line-height:0.95}
+  .hero-tag{font-size:16px;margin-bottom:28px}
+  .ticker-form{max-width:100%;box-shadow:4px 4px 0 var(--ink)}
+  .ticker-form input{padding:14px 16px;font-size:20px;letter-spacing:3px}
+  .ticker-form button{padding:14px 18px;font-size:11px;letter-spacing:1.5px}
+  .chips{gap:6px}
+  .chip{padding:7px 11px;font-size:11px}
+  .section{padding:28px 0 32px}
+  .section-hed{font-size:24px}
+  .lb-row{grid-template-columns:28px 1fr auto;gap:10px;padding:11px 14px}
+  .lb-dir{display:none}
+  .lb-rank{font-size:18px}
+  .lb-ret{font-size:16px;min-width:56px}
+  .reports-grid{grid-template-columns:1fr;gap:10px}
+  .report{padding:16px}
+  footer .wrap{flex-direction:column;gap:8px;text-align:center}
 }
 </style>
 </head>
@@ -207,107 +183,111 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
     <nav class="mh-nav">
       <a href="/leaderboard">Leaderboard</a>
       <a href="/p/top10">Top 10</a>
-      <a href="/submit" class="mh-cta">Pitch a Call</a>
     </nav>
   </div>
 </header>
 
 <section class="hero">
   <div class="wrap">
-    <div class="hero-kicker">★ First call is free ★</div>
-    <h1>Pitch a stock. <em>The market</em> keeps score.</h1>
-    <p class="hero-deck">Submit your thesis at today's close. An AI writes the research brief. Every call sits on the leaderboard, tracked nightly, ranked by return since entry.</p>
-    <div class="hero-ctas">
-      <a href="/submit" class="btn btn-primary">Pitch your first call →</a>
-      <a href="/leaderboard" class="btn btn-ghost">See the leaderboard</a>
-    </div>
-    <div class="kpis">
-      <div class="kpi"><div class="kpi-v">${portfolio.length}</div><div class="kpi-l">Live portals</div></div>
-      <div class="kpi"><div class="kpi-v">~2<span class="unit">min</span></div><div class="kpi-l">AI brief ready</div></div>
-      <div class="kpi"><div class="kpi-v">Free</div><div class="kpi-l">First call</div></div>
-      <div class="kpi"><div class="kpi-v">Nightly</div><div class="kpi-l">Rebalance cadence</div></div>
+    <h1>Pitch a <em>stock.</em></h1>
+    <p class="hero-tag">Enter a ticker. Get an AI research brief in two minutes. The market keeps score.</p>
+    <form class="ticker-form" action="/submit" method="get" onsubmit="return sanitizeTicker(event)">
+      <input name="ticker" id="heroTicker" placeholder="TYPE A TICKER" maxlength="8" autocomplete="off" spellcheck="false" autofocus>
+      <button type="submit">Pitch →</button>
+    </form>
+    <div class="chips">
+      ${['NVDA','AAPL','PLTR','MSGS','TSLA','BX'].map(t => `<span class="chip" data-t="${t}">${t}</span>`).join('')}
     </div>
   </div>
 </section>
 
-<section class="steps">
+<section class="section">
   <div class="wrap">
-    <div class="section-eyebrow">§ How It Works</div>
-    <h2 class="section-hed">Thesis in. Brief out. Market scores it.</h2>
-    <p class="section-sub">Three steps, no gatekeepers. You write the call; we handle the research and the scoreboard.</p>
-    <div class="step-grid">
-      <div class="step">
-        <div class="step-num">I</div>
-        <div class="step-hed">Submit your thesis.</div>
-        <div class="step-body">Ticker, long or short, price target, a few hundred words on why. Entry price is locked to the current market quote — nobody backdates anything.</div>
-      </div>
-      <div class="step">
-        <div class="step-num">II</div>
-        <div class="step-hed">AI writes the brief.</div>
-        <div class="step-body">A source-tagged research note built from your thesis: business summary, key drivers, risks, path to the price target. Cached and shareable within minutes.</div>
-      </div>
-      <div class="step">
-        <div class="step-num">III</div>
-        <div class="step-hed">Market keeps score.</div>
-        <div class="step-body">Prices refresh nightly. Your call is ranked against every other call on the book by return since entry. The leaderboard does the editorializing for you.</div>
-      </div>
+    <div class="section-head">
+      <h2 class="section-hed">Top of the <em>board</em></h2>
+      <a href="/leaderboard" class="section-link">Full leaderboard →</a>
     </div>
+    ${top.length === 0 ? `
+      <div class="lb-preview">
+        <div class="lb-empty">No calls ranked yet. <a href="/submit">Be the first</a> — take the cover.</div>
+      </div>
+    ` : `
+      <div class="lb-preview">
+        ${top.map((r, i) => renderLbRow(r, i + 1)).join('')}
+      </div>
+    `}
   </div>
 </section>
 
-<section class="gallery">
+${reports.length > 0 ? `
+<section class="section">
   <div class="wrap">
-    <div class="section-eyebrow">§ The Book</div>
-    <h2 class="section-hed">Live portals on the wire.</h2>
-    <p class="section-sub">A sample of research portals already published. Each one is a full thesis with model, comps, and market-tracked performance.</p>
-    ${featured.length > 0 ? `<div class="portal-grid">
-      ${featured.map(p => renderPortal(p, false)).join('')}
-    </div>` : ''}
-    ${rest.length > 0 ? `<div class="portal-grid secondary">
-      ${rest.map(p => renderPortal(p, true)).join('')}
-    </div>` : ''}
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="cta-block">
-      <div class="section-eyebrow">★ Ready to run?</div>
-      <h2 class="section-hed">Pitch your <em>first call.</em></h2>
-      <p class="section-sub">It's free. You keep the attribution. The market tells you whether you were right.</p>
-      <div class="hero-ctas">
-        <a href="/submit" class="btn btn-primary">Start writing →</a>
-        <a href="/leaderboard" class="btn btn-ghost" style="color:var(--paper);border-color:var(--paper)">Browse the board</a>
-      </div>
+    <div class="section-head">
+      <h2 class="section-hed">Latest <em>reports</em></h2>
+      <a href="/leaderboard" class="section-link">Browse all →</a>
+    </div>
+    <div class="reports-grid">
+      ${reports.map(renderReport).join('')}
     </div>
   </div>
 </section>
+` : ''}
 
 <footer>
   <div class="wrap">
-    <div>© ${new Date().getFullYear()} Stock Pitch · <a href="/leaderboard">Leaderboard</a> · <a href="/submit">Submit</a> · <a href="/p/top10">Top 10</a></div>
-    <div class="note">Nothing on this site is investment advice.</div>
+    <div>© ${new Date().getFullYear()} Stock Pitch · <a href="/leaderboard">Board</a> · <a href="/submit">Submit</a></div>
+    <div class="note">Nothing here is investment advice.</div>
   </div>
 </footer>
+
+<script>
+function sanitizeTicker(e){
+  const el = document.getElementById('heroTicker');
+  const v = (el.value || '').toUpperCase().replace(/[^A-Z.]/g,'').slice(0,8);
+  if (!v) { e.preventDefault(); el.focus(); return false; }
+  el.value = v;
+  return true;
+}
+document.querySelectorAll('.chip').forEach(c => {
+  c.addEventListener('click', () => {
+    const t = c.dataset.t;
+    window.location.href = '/submit?ticker=' + encodeURIComponent(t);
+  });
+});
+// Force uppercase as user types
+document.getElementById('heroTicker').addEventListener('input', e => {
+  const el = e.target;
+  const v = el.value.toUpperCase().replace(/[^A-Z.]/g,'');
+  if (v !== el.value) el.value = v;
+});
+</script>
 
 </body>
 </html>`;
 }
 
-function renderPortal(p: PortalEntry, compact: boolean): string {
+function renderLbRow(r: LeaderboardRow, rank: number): string {
+  const pos = r.return_pct >= 0;
+  return `<a class="lb-row" href="/c/${r.call_id}">
+    <div class="lb-rank">${rank}</div>
+    <div>
+      <span class="lb-analyst">${r.user_display}<span class="tkr">${r.ticker}</span></span>
+    </div>
+    <div class="lb-dir">${r.direction}</div>
+    <div class="lb-ret ${pos ? 'pos' : 'neg'}">${pos ? '+' : ''}${(r.return_pct * 100).toFixed(1)}%</div>
+  </a>`;
+}
+
+function renderReport(p: PortalEntry): string {
   const isNeg = p.headline_stat.trim().startsWith('-');
-  const statColor = isNeg ? 'color:var(--bear)' : 'color:var(--bull)';
-  return `<a href="${p.url}" class="portal ${compact ? 'compact' : ''}" target="_blank" rel="noopener">
-    <div class="portal-ticker">${p.ticker}</div>
-    <div class="portal-co">${p.company}</div>
-    <span class="portal-cat">${p.category}</span>
-    <div class="portal-thesis">${p.thesis}</div>
-    <div class="portal-foot">
-      <div>
-        <div class="portal-stat" style="${statColor}">${p.headline_stat}</div>
-        <div class="portal-stat-l">${p.headline_label}</div>
-      </div>
-      <div class="portal-rating ${p.rating_class}">${p.rating}</div>
+  const statClass = isNeg ? 'neg' : 'pos';
+  return `<a href="${p.url}" class="report" target="_blank" rel="noopener">
+    <div class="report-tkr">${escapeHtml(p.ticker)}</div>
+    <div class="report-co">${escapeHtml(p.company)}</div>
+    <div class="report-thesis">${escapeHtml(p.thesis)}</div>
+    <div class="report-foot">
+      <div class="report-stat ${statClass}">${escapeHtml(p.headline_stat)}</div>
+      <div class="report-rating">${escapeHtml(p.rating)}</div>
     </div>
   </a>`;
 }
