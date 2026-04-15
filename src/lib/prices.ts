@@ -19,50 +19,49 @@ export interface PriceQuote {
 }
 
 /**
- * Primary price lookup. For READ paths (leaderboard/detail enrichment), this
- * falls back to mock data so UI never breaks. For WRITE paths (accepting a new
- * call), the caller MUST use `fetchPriceStrict` which returns null for tickers
- * we can't confidently price — this is how we prevent users from submitting
- * garbage tickers and having fake "returns" tracked against fabricated prices.
+ * Primary price lookup — Yahoo v8 only, no mock fallback.
+ *
+ * Previously this function fell back to a deterministic hash-of-ticker fake
+ * price so the UI "never broke." That was a credibility bug — tickers we
+ * couldn't actually price rendered with fabricated numbers (e.g. WING
+ * showed a made-up $87 instead of its real $198 close). Never again.
+ *
+ * Read-path callers must handle `null` (skip the row, show em-dash, etc.).
  */
 export async function fetchPrice(ticker: string, _fmpKey?: string): Promise<PriceQuote | null> {
   const t = ticker.toUpperCase().trim();
-  const yahoo = await fetchFromYahoo(t);
-  if (yahoo) return yahoo;
-  // Soft fallback for READ paths only
-  return mockPrice(t);
+  return await fetchFromYahoo(t);
 }
 
 /**
- * Strict price lookup — Yahoo only, no mock fallback. Used when ACCEPTING a
- * new call submission. If we can't price the ticker from a real source, we
- * reject the call rather than silently inventing an entry price.
- *
- * In dev/demo mode (ENVIRONMENT=preview + a small allowlist) we still accept
- * a set of known-good tickers from MOCK_PRICES so the deployed preview remains
- * usable without external API dependency.
+ * Strict price lookup — real source only. Used when ACCEPTING a new call.
+ * If Yahoo can't price the ticker, we reject the submission rather than
+ * silently inventing an entry price. The `opts` arg is kept for backward
+ * compat; the demo fallback is no longer honored because the baked-in
+ * MOCK_PRICES list was months-stale and caused credibility bugs (e.g. a
+ * user pitched WING and got the wrong closing price).
  */
 export async function fetchPriceStrict(
   ticker: string,
-  opts?: { allowDemoFallback?: boolean }
+  _opts?: { allowDemoFallback?: boolean }
 ): Promise<PriceQuote | null> {
   const t = ticker.toUpperCase().trim();
-  const yahoo = await fetchFromYahoo(t);
-  if (yahoo) return yahoo;
-  if (opts?.allowDemoFallback && MOCK_PRICES[t]) {
-    return { ...MOCK_PRICES[t], as_of: new Date().toISOString() };
-  }
-  return null;
+  return await fetchFromYahoo(t);
 }
 
 /**
- * Yahoo Finance unofficial quote endpoint.
- * Server-side only (CORS would block from browser).
- * Small list of User-Agents to avoid their bot-block heuristics.
+ * Yahoo Finance price lookup — uses the v8 chart endpoint.
+ *
+ * Why not v7/finance/quote? Yahoo started returning "Unauthorized" on that
+ * endpoint in 2024–25. v8/finance/chart is the canonical endpoint that
+ * still works unauthenticated and returns real-time prices + meta for any
+ * US-listed ticker. The meta block gives us price, name, and previous
+ * close so we can compute change_1d ourselves.
  */
 async function fetchFromYahoo(ticker: string): Promise<PriceQuote | null> {
   try {
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`;
+    // range=5d so we have a reliable previousClose even if today hasn't printed
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`;
     const res = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
@@ -72,74 +71,45 @@ async function fetchFromYahoo(ticker: string): Promise<PriceQuote | null> {
     });
     if (!res.ok) return null;
     const data = await res.json() as {
-      quoteResponse?: {
+      chart?: {
         result?: Array<{
-          symbol: string;
-          regularMarketPrice?: number;
-          regularMarketChangePercent?: number;
-          shortName?: string;
-          longName?: string;
+          meta?: {
+            symbol?: string;
+            regularMarketPrice?: number;
+            previousClose?: number | null;
+            chartPreviousClose?: number;
+            shortName?: string;
+            longName?: string;
+            instrumentType?: string;
+            regularMarketTime?: number;
+          };
         }>;
+        error?: unknown;
       };
     };
-    const q = data.quoteResponse?.result?.[0];
-    if (!q || typeof q.regularMarketPrice !== 'number') return null;
+    const m = data.chart?.result?.[0]?.meta;
+    if (!m || typeof m.regularMarketPrice !== 'number') return null;
+    if (m.instrumentType && m.instrumentType !== 'EQUITY' && m.instrumentType !== 'ETF') {
+      // Reject options, futures, crypto-style symbols etc. for now.
+      return null;
+    }
+    const prev = m.previousClose ?? m.chartPreviousClose;
+    const change_1d = typeof prev === 'number' && prev > 0
+      ? (m.regularMarketPrice - prev) / prev
+      : null;
     return {
-      ticker: q.symbol,
-      price: q.regularMarketPrice,
-      change_1d: q.regularMarketChangePercent ?? null,
-      company: q.longName ?? q.shortName ?? null,
-      as_of: new Date().toISOString(),
+      ticker: m.symbol ?? ticker.toUpperCase(),
+      price: m.regularMarketPrice,
+      change_1d,
+      company: m.longName ?? m.shortName ?? null,
+      as_of: m.regularMarketTime
+        ? new Date(m.regularMarketTime * 1000).toISOString()
+        : new Date().toISOString(),
     };
   } catch (err) {
-    console.error('Yahoo price fetch failed:', err);
+    console.error('Yahoo v8 price fetch failed:', err);
     return null;
   }
-}
-
-// Stable mock prices — last-resort fallback so UX never breaks
-const MOCK_PRICES: Record<string, Omit<PriceQuote, 'as_of'>> = {
-  AAPL: { ticker: 'AAPL', price: 237.50, change_1d: 0.4, company: 'Apple Inc.' },
-  MSFT: { ticker: 'MSFT', price: 512.80, change_1d: 0.7, company: 'Microsoft Corp' },
-  GOOGL:{ ticker: 'GOOGL',price: 195.30, change_1d: -0.3, company: 'Alphabet Inc.' },
-  AMZN: { ticker: 'AMZN', price: 242.10, change_1d: 1.2, company: 'Amazon.com Inc.' },
-  META: { ticker: 'META', price: 748.00, change_1d: -0.8, company: 'Meta Platforms' },
-  TSLA: { ticker: 'TSLA', price: 312.50, change_1d: 2.3, company: 'Tesla Inc.' },
-  NVDA: { ticker: 'NVDA', price: 168.00, change_1d: 1.5, company: 'NVIDIA Corp' },
-  BX:   { ticker: 'BX',   price: 110.00, change_1d: 0.2, company: 'Blackstone Inc.' },
-  KMB:  { ticker: 'KMB',  price: 96.59,  change_1d: -0.4, company: 'Kimberly-Clark' },
-  KVUE: { ticker: 'KVUE', price: 18.72,  change_1d: 0.1, company: 'Kenvue Inc.' },
-  VITL: { ticker: 'VITL', price: 13.14,  change_1d: 0.8, company: 'Vital Farms Inc.' },
-  MSGS: { ticker: 'MSGS', price: 195.00, change_1d: 0.5, company: 'MSG Sports' },
-  KNX:  { ticker: 'KNX',  price: 58.60,  change_1d: -0.2, company: 'Knight-Swift' },
-  RRX:  { ticker: 'RRX',  price: 132.00, change_1d: 0.6, company: 'Regal Rexnord' },
-  SPY:  { ticker: 'SPY',  price: 612.00, change_1d: 0.3, company: 'SPDR S&P 500' },
-  QQQ:  { ticker: 'QQQ',  price: 542.00, change_1d: 0.5, company: 'Invesco QQQ' },
-  PLTR: { ticker: 'PLTR', price: 72.50,  change_1d: 1.8, company: 'Palantir' },
-  UBER: { ticker: 'UBER', price: 86.30,  change_1d: 0.4, company: 'Uber Technologies' },
-  SNOW: { ticker: 'SNOW', price: 178.00, change_1d: -0.7, company: 'Snowflake Inc.' },
-  NET:  { ticker: 'NET',  price: 112.50, change_1d: 0.9, company: 'Cloudflare Inc.' },
-  AMD:  { ticker: 'AMD',  price: 178.20, change_1d: 1.1, company: 'Advanced Micro Devices' },
-  AVGO: { ticker: 'AVGO', price: 302.00, change_1d: 0.6, company: 'Broadcom Inc.' },
-  COST: { ticker: 'COST', price: 1008.00, change_1d: 0.2, company: 'Costco Wholesale' },
-  LLY:  { ticker: 'LLY',  price: 782.00, change_1d: -0.5, company: 'Eli Lilly' },
-  JPM:  { ticker: 'JPM',  price: 286.00, change_1d: 0.3, company: 'JPMorgan Chase' },
-};
-
-function mockPrice(ticker: string): PriceQuote | null {
-  const base = MOCK_PRICES[ticker];
-  if (!base) {
-    const seed = ticker.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const price = 20 + (seed % 200) + (seed % 17) / 10;
-    return {
-      ticker,
-      price: Math.round(price * 100) / 100,
-      change_1d: ((seed % 40) - 20) / 10,
-      company: null,
-      as_of: new Date().toISOString(),
-    };
-  }
-  return { ...base, as_of: new Date().toISOString() };
 }
 
 export function calcReturn(
