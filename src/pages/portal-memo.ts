@@ -56,6 +56,10 @@ export function renderPortalMemo(input: PortalMemoInput): string {
     <li><a href="#complication">The Core Thesis: Complication</a></li>
     <li><a href="#support-1">${escapeHtml(content.supportingPoint1.heading)}</a></li>
     <li><a href="#support-2">${escapeHtml(content.supportingPoint2.heading)}</a></li>
+    <li><a href="#support-3">${escapeHtml(content.supportingPoint3.heading)}</a></li>
+    <li><a href="#bridge">The Revenue &amp; Earnings Bridge</a></li>
+    <li><a href="#sotp">${escapeHtml(content.sotpSection.heading)}</a></li>
+    <li><a href="#mgmt">${escapeHtml(content.mgmtSection.heading)}</a></li>
     <li><a href="#risks">Key Risks</a></li>
     <li><a href="#valuation">Valuation Framework</a></li>
     <li><a href="#price-target">Price Target & Scenarios</a></li>
@@ -94,11 +98,32 @@ export function renderPortalMemo(input: PortalMemoInput): string {
   ${sideAnnotated(content.supportingPoint1.body, sidenotes, 8, 11)}
 
   <h2 id="support-2">${escapeHtml(content.supportingPoint2.heading)}</h2>
-  ${sideAnnotated(content.supportingPoint2.body, sidenotes, 11, 14)}
+  ${sideAnnotated(content.supportingPoint2.body, sidenotes, 11, 13)}
+
+  <h2 id="support-3">${escapeHtml(content.supportingPoint3.heading)}</h2>
+  ${sideAnnotated(content.supportingPoint3.body, sidenotes, 13, 16)}
 </section>
 
 <section>
-  <div class="kicker">§ V — Bulls and Bears</div>
+  <div class="kicker">§ V — The Bridge</div>
+  <h2 id="bridge">The revenue &amp; earnings bridge</h2>
+  ${sideAnnotated(content.financialBridge, sidenotes, 16, 17)}
+</section>
+
+<section>
+  <div class="kicker">§ VI — Sum of Parts</div>
+  <h2 id="sotp">${escapeHtml(content.sotpSection.heading)}</h2>
+  ${sideAnnotated(content.sotpSection.body, sidenotes, 17, 19)}
+</section>
+
+<section>
+  <div class="kicker">§ VII — Stewardship</div>
+  <h2 id="mgmt">${escapeHtml(content.mgmtSection.heading)}</h2>
+  ${sideAnnotated(content.mgmtSection.body, sidenotes, 19, 20)}
+</section>
+
+<section>
+  <div class="kicker">§ VIII — Bulls and Bears</div>
   <h2>The case in brief</h2>
   <div class="bull-bear">
     <div class="bb-card bull">
@@ -113,32 +138,32 @@ export function renderPortalMemo(input: PortalMemoInput): string {
 </section>
 
 <section>
-  <div class="kicker">§ VI — Risks</div>
+  <div class="kicker">§ IX — Risks</div>
   <h2 id="risks">What could derail the thesis</h2>
   ${sideAnnotated(content.keyRisks, sidenotes, 14, 16)}
 </section>
 
 <section>
-  <div class="kicker">§ VII — Valuation</div>
+  <div class="kicker">§ X — Valuation</div>
   <h2 id="valuation">How we frame value</h2>
   ${sideAnnotated(content.valuationSection, sidenotes, 16, 18)}
 </section>
 
 <section>
-  <div class="kicker">§ VIII — Recommendation</div>
+  <div class="kicker">§ XI — Recommendation</div>
   <h2 id="price-target">Price target and scenario analysis</h2>
   ${sideAnnotated(content.priceTargetSection, sidenotes, 18, 19)}
 </section>
 
 <section>
-  <div class="kicker">§ IX — Catalysts</div>
+  <div class="kicker">§ XII — Catalysts</div>
   <h2 id="catalysts">Path to value — 12-24 months</h2>
   ${sideAnnotated(content.catalystsSection, sidenotes, 19, 20)}
 </section>
 
 ${content.diligenceQuestions.length > 0 ? `
 <section>
-  <div class="kicker">§ X — Diligence Toolkit</div>
+  <div class="kicker">§ XIII — Diligence Toolkit</div>
   <h2 id="diligence">Questions for Management</h2>
   <div class="diligence">
     ${content.diligenceQuestions.map(d => `

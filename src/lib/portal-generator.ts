@@ -83,12 +83,12 @@ export async function collectResearch(args: {
     // Aggressive cap: ~10K chars total excerpt. Workers AI models throttle
     // heavily on large contexts; tighter is faster and the model only
     // needs signal, not full filings.
-    // Larger excerpts so the model has real material to cite from.
-    // AMZN-caliber output needs dense number references + specific
-    // names + management quotes pulled from the actual 10-K.
-    mda_excerpt: tenK.mda.slice(0, 30000),
-    risks_excerpt: tenK.risks.slice(0, 15000),
-    tenq_excerpt: tenQ.text.slice(0, 10000),
+    // Big excerpts — AMZN-caliber memos cite dense specifics. 10-K MD&A is
+    // the main signal source; Item 1A Risk Factors feeds the risks section;
+    // 10-Q captures fresh guidance + quarterly commentary.
+    mda_excerpt: tenK.mda.slice(0, 55000),
+    risks_excerpt: tenK.risks.slice(0, 25000),
+    tenq_excerpt: tenQ.text.slice(0, 15000),
     thesis: args.thesis ?? null,
     direction: args.direction ?? null,
     price_target: args.price_target ?? null,
@@ -212,10 +212,14 @@ export interface PortalContent {
   thesisComplication: string;                      // 300-400 words
   supportingPoint1: { heading: string; body: string }; // deep dive on bull #1
   supportingPoint2: { heading: string; body: string }; // deep dive on bull #2
-  keyRisks: string;                                // 300-400 words, multi-risk
-  valuationSection: string;                        // 400-500 words, method + multiples
+  supportingPoint3: { heading: string; body: string }; // deep dive on bull #3
+  sotpSection: { heading: string; body: string };  // SOTP / hidden-value analysis
+  mgmtSection: { heading: string; body: string };  // management + capital allocation
+  financialBridge: string;                         // revenue & earnings bridge paragraph
+  keyRisks: string;                                // 400-500 words, multi-risk
+  valuationSection: string;                        // 500-700 words, method + multiples
   priceTargetSection: string;                      // 300-400 words, upside/downside math
-  catalystsSection: string;                        // 300-400 words, timeline
+  catalystsSection: string;                        // 400-500 words, timeline
 
   // Flat arrays still used by bulls/bears card + diligence block
   bullPoints: string[];
@@ -290,9 +294,9 @@ ${researchCard}`;
 
   console.log(`[portal][${r.ticker}] deep generation start. mda=${r.mda_excerpt.length} risks=${r.risks_excerpt.length} 10q=${r.tenq_excerpt.length}`);
 
-  // PARALLEL — 8 calls at once. Workers AI paid tier handles this. Cuts total
-  // runtime from ~3 min sequential to ~60-75s.
-  const [rawA, rawA2, rawA3, rawA4, rawB, rawC, rawD, rawE] = await Promise.all([
+  // PARALLEL — 11 calls at once. Workers AI paid tier handles this. Cuts
+  // total runtime from ~4 min sequential to ~60-80s.
+  const [rawA, rawA2, rawA3, rawA4, rawA5, rawA6, rawA7, rawB, rawC, rawD, rawE] = await Promise.all([
     runModel(
     ai, PRIMARY_MODEL,
     sysJson(`{
@@ -340,6 +344,37 @@ ${researchCard}`;
     `Produce RISKS + CATALYSTS JSON for ${r.ticker}. Be specific — name the events, dates, quantify where possible.\n\n${userBase}`,
     { max_tokens: 2500, temperature: 0.5, timeoutMs: 60_000 }
   ),
+    // ---- Call A5: Third supporting deep dive ----
+    runModel(
+      ai, PRIMARY_MODEL,
+      sysJson(`{
+  "heading": "8-12 word H2 headline on a THIRD distinct bull driver",
+  "body": "500-700 word deep-dive on a THIRD bull driver different from the first two. Possible angles: international expansion, margin inflection, cap-ex cycle, working capital release, capital return framework, product cycle, regulatory tailwind. Dense [10-K] tags, 2-3 sidenotes [[SIDENOTE: ...]]."
+}`),
+      `DEEP DIVE on the THIRD-STRONGEST bull point for ${r.ticker}. Different theme from the first two deep-dives — pick an orthogonal axis (e.g. cap-alloc vs product, or margin vs revenue, or US vs intl).\n\n${userBase}`,
+      { max_tokens: 2500, temperature: 0.55, timeoutMs: 60_000 }
+    ),
+    // ---- Call A6: SOTP / Hidden Value ----
+    runModel(
+      ai, PRIMARY_MODEL,
+      sysJson(`{
+  "heading": "8-12 word H2 headline about hidden or underappreciated value",
+  "body": "500-700 word section on sum-of-parts or under-valued assets. Break out each major segment or asset: name it, estimate revenue/EBITDA, apply a reasonable multiple, arrive at a value. Sum to get implied EV. Compare to current market cap. Multiple sidenotes [[SIDENOTE: ...]]. Cite [10-K] segment data; label method estimates as [Computed] or [Estimated]."
+}`),
+      `DEEP DIVE: sum-of-parts / hidden value analysis for ${r.ticker}. List segments or hidden assets (equity stakes, real estate, intellectual property, cash shield, NOL carryforwards) and show the SOTP math. Compare implied EV to current market cap.\n\n${userBase}`,
+      { max_tokens: 2500, temperature: 0.5, timeoutMs: 60_000 }
+    ),
+    // ---- Call A7: Management + Capital Allocation + Financial Bridge ----
+    runModel(
+      ai, PRIMARY_MODEL,
+      sysJson(`{
+  "mgmtHeading": "10-12 word H2 on management + capital allocation track record",
+  "mgmtBody": "400-500 word section on the CEO, CFO, and capital allocation history. Name the executives. Cite specific buybacks ($ and share counts), dividends initiated, M&A (names and prices), cap-ex trajectory. How have they created or destroyed value? 1-2 sidenotes [[SIDENOTE: ...]].",
+  "financialBridge": "400-500 word section titled 'The revenue and earnings bridge'. Walk from last-reported revenue → next-3-years guided or estimated revenue, decomposing growth by segment or driver. Then walk from revenue to operating income to EPS with specific margin assumptions. Dense [10-K]/[Estimated] tags. 1-2 sidenotes [[SIDENOTE: ...]]."
+}`),
+      `Produce MANAGEMENT + BRIDGE JSON for ${r.ticker}. Be specific on names, dates, dollars.\n\n${userBase}`,
+      { max_tokens: 2500, temperature: 0.5, timeoutMs: 60_000 }
+    ),
     // ---- Call B: Financials ----
     runModel(
     ai, PRIMARY_MODEL,
@@ -398,11 +433,14 @@ ${researchCard}`;
   const support1Parsed = parsePortalJson(rawA2);
   const support2Parsed = parsePortalJson(rawA3);
   const risksParsed = parsePortalJson(rawA4);
+  const support3Parsed = parsePortalJson(rawA5);
+  const sotpParsed = parsePortalJson(rawA6);
+  const mgmtParsed = parsePortalJson(rawA7);
   const financialsParsed = parsePortalJson(rawB);
   const consensusParsed = parsePortalJson(rawC);
   const deckParsed = parsePortalJson(rawD);
   const diligenceParsed = parsePortalJson(rawE);
-  console.log(`[portal][${r.ticker}] all 8 calls parsed. thesis keys: ${Object.keys(thesisParsed).length}`);
+  console.log(`[portal][${r.ticker}] all 11 calls parsed.`);
 
   // Extract sidenote markers + strip them from the prose, collecting to sidebar
   const allSidenotes: string[] = [];
@@ -429,6 +467,19 @@ ${researchCard}`;
       heading: String(support2Parsed.heading || 'Secondary bull thesis').trim(),
       body: normalizeNumbers(extractSidenotes(support2Parsed.body) || 'Deep dive pending.'),
     },
+    supportingPoint3: {
+      heading: String(support3Parsed.heading || 'Third bull driver').trim(),
+      body: normalizeNumbers(extractSidenotes(support3Parsed.body) || 'Deep dive pending.'),
+    },
+    sotpSection: {
+      heading: String(sotpParsed.heading || 'Sum-of-parts analysis').trim(),
+      body: normalizeNumbers(extractSidenotes(sotpParsed.body) || 'SOTP pending.'),
+    },
+    mgmtSection: {
+      heading: String(mgmtParsed.mgmtHeading || 'Management and capital allocation').trim(),
+      body: normalizeNumbers(extractSidenotes(mgmtParsed.mgmtBody) || 'Management assessment pending.'),
+    },
+    financialBridge: normalizeNumbers(extractSidenotes(mgmtParsed.financialBridge) || 'Financial bridge pending.'),
     keyRisks: normalizeNumbers(extractSidenotes(risksParsed.keyRisks) || 'Risks pending.'),
     catalystsSection: normalizeNumbers(extractSidenotes(risksParsed.catalystsSection) || 'Catalysts pending.'),
     valuationSection: normalizeNumbers(extractSidenotes(thesisParsed.valuationSection) || fallbackValuation(r)),
