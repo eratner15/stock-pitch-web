@@ -263,7 +263,7 @@ function sanitizeTicker(e){
 document.querySelectorAll('.chip').forEach(c => {
   c.addEventListener('click', () => {
     const t = c.dataset.t;
-    window.location.href = '/submit?ticker=' + encodeURIComponent(t);
+    window.location.href = (window.__BASE_PATH__ || '') + '/submit?ticker=' + encodeURIComponent(t);
   });
 });
 document.getElementById('heroTicker').addEventListener('input', e => {

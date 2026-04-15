@@ -3,17 +3,22 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-# Preview deploys to workers.dev subdomain until domains are registered
-# Once stockpitch.app and research.levincap.com are ready, uncomment:
-# routes = [
-#   { pattern = "stockpitch.app", custom_domain = true },
-#   { pattern = "stockpitch.app/*", zone_name = "stockpitch.app" },
-#   { pattern = "research.levincap.com", custom_domain = true },
-#   { pattern = "research.levincap.com/*", zone_name = "levincap.com" }
-# ]
+# Public mount: research.levincap.com is pure research content (lcs-portfolio-intel).
+# stock-pitch-web instead mounts under levincap.com/stock-pitch as the "build
+# a pitch" tool. The path-mount wrapper in src/index.ts strips the prefix on
+# the way in and rewrites absolute paths + a fetch() wrapper on the way out.
+routes = [
+  { pattern = "levincap.com/stock-pitch", zone_name = "levincap.com" },
+  { pattern = "levincap.com/stock-pitch/*", zone_name = "levincap.com" },
+  { pattern = "www.levincap.com/stock-pitch", zone_name = "levincap.com" },
+  { pattern = "www.levincap.com/stock-pitch/*", zone_name = "levincap.com" },
+  { pattern = "research.levincap.com/stock-pitch", zone_name = "levincap.com" },
+  { pattern = "research.levincap.com/stock-pitch/*", zone_name = "levincap.com" }
+]
+workers_dev = true
 
 [vars]
-ENVIRONMENT = "preview"
+ENVIRONMENT = "production"
 
 [[kv_namespaces]]
 binding = "REQUESTS"

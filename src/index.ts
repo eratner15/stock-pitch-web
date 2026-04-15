@@ -107,6 +107,9 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// Path-mount rewriter lives at the worker entry (`mountedFetch` near the
+// end of this file) using Cloudflare's HTMLRewriter. No extra middleware.
+
 // ==========================================================================
 // LANDING
 // ==========================================================================
@@ -1005,13 +1008,257 @@ app.post('/stripe/webhook', async (c) => {
   }
 });
 
+// ==========================================================================
+// PORTAL GENERATOR — build an /amzn-caliber 5-page portal for any ticker.
+// Chains Workers AI models against the stock-pitch skill.
+// ==========================================================================
+app.post('/stock-pitch/generate', async (c) => {
+  let body: any;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON' }, 400); }
+
+  const ticker = sanitizeTicker(String(body.ticker || ''));
+  if (!ticker) return c.json({ error: 'Valid ticker required' }, 400);
+
+  // Rate limit — portals are expensive, cap at 5/hour per IP
+  const ip = c.req.header('cf-connecting-ip') || 'unknown';
+  const limit = await checkRateLimit(c.env.REQUESTS, `portal:ip:${ip}`, 5, 3600);
+  if (!limit.allowed) return c.json({ error: 'Too many portal generations from this network. Try again in an hour.' }, 429);
+
+  // Lock entry price at submit time
+  const { fetchPriceStrict } = await import('./lib/prices');
+  const quote = await fetchPriceStrict(ticker);
+  if (!quote) return c.json({ error: `Could not price ${ticker}. Check the symbol.` }, 400);
+
+  const jobId = newId();
+  const entryDate = new Date().toISOString();
+
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO portal_jobs (id, ticker, company, direction, thesis, price_target, status, step, entry_price, entry_date, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', 'Queued — starting research', ?, ?, datetime('now'))
+    `).bind(
+      jobId,
+      ticker,
+      quote.company,
+      body.direction || null,
+      body.thesis || null,
+      body.price_target ? Number(body.price_target) : null,
+      quote.price,
+      entryDate,
+    ).run();
+  } catch (e) {
+    console.error('portal_jobs insert failed', e);
+    return c.json({ error: 'Could not queue job' }, 500);
+  }
+
+  // Kick off generation in background (waitUntil — returns before gen finishes)
+  c.executionCtx.waitUntil(generatePortal(c.env, jobId, ticker, quote));
+
+  return c.json({ ok: true, jobId, redirect: `/stock-pitch/jobs/${jobId}` });
+});
+
+app.get('/stock-pitch/jobs/:jobId', async (c) => {
+  const jobId = c.req.param('jobId');
+  const job = await c.env.DB
+    .prepare('SELECT * FROM portal_jobs WHERE id = ?')
+    .bind(jobId)
+    .first<any>();
+  if (!job) return c.text('Job not found', 404);
+  const { renderPortalJobStatus } = await import('./pages/portal-job-status');
+  return c.html(renderPortalJobStatus({
+    jobId: job.id,
+    ticker: job.ticker,
+    status: job.status,
+    step: job.step,
+    pages_complete: job.pages_complete ?? 0,
+    pages_total: job.pages_total ?? 5,
+    error_message: job.error_message,
+  }));
+});
+
+app.get('/api/portal/jobs/:jobId', async (c) => {
+  const jobId = c.req.param('jobId');
+  const job = await c.env.DB
+    .prepare('SELECT id, ticker, status, step, pages_complete, pages_total, error_message FROM portal_jobs WHERE id = ?')
+    .bind(jobId)
+    .first<any>();
+  if (!job) return c.json({ error: 'Job not found' }, 404);
+  return c.json(job);
+});
+
+app.get('/stock-pitch/:ticker/memo', async (c) => {
+  const ticker = sanitizeTicker(c.req.param('ticker'));
+  if (!ticker) return c.text('Invalid ticker', 400);
+  const html = await c.env.REQUESTS.get(`portal:${ticker}:memo`);
+  if (!html) return c.text(`No portal for ${ticker} — generate one at /stock-pitch`, 404);
+  return c.html(html);
+});
+
 app.notFound((c) => c.text('Not Found', 404));
+
+// ==========================================================================
+// Path-mount fetch wrapper — when served at levincap.com/stock-pitch, strip
+// the prefix before routing and rewrite absolute paths in the response so
+// the app behaves as if it owned the whole origin. Other hosts (workers.dev,
+// research.levincap.com, etc.) bypass this and hit Hono directly.
+// ==========================================================================
+// Hosts that mount stock-pitch-web at /stock-pitch (vs. the bare workers.dev
+// subdomain which serves everything at the root). Any of these hosts with
+// path starting with /stock-pitch gets the path-strip + link-rewrite.
+const MOUNT_HOSTS = new Set([
+  'levincap.com',
+  'www.levincap.com',
+  'research.levincap.com',
+]);
+const MOUNT_PREFIX = '/stock-pitch';
+
+/**
+ * Portal generation pipeline — invoked via waitUntil() so the request
+ * returns immediately while generation runs in the background.
+ * Updates portal_jobs.status + step as it progresses for the progress UI.
+ */
+async function generatePortal(env: Env, jobId: string, ticker: string, quote: { company: string | null; price: number }): Promise<void> {
+  const setStep = async (status: string, step: string, pagesComplete?: number) => {
+    try {
+      await env.DB.prepare(`
+        UPDATE portal_jobs
+        SET status = ?, step = ?${pagesComplete !== undefined ? ', pages_complete = ?' : ''}
+        WHERE id = ?
+      `).bind(...(pagesComplete !== undefined ? [status, step, pagesComplete, jobId] : [status, step, jobId])).run();
+    } catch (e) { console.error('portal job update failed', e); }
+  };
+  const fail = async (msg: string) => {
+    try {
+      await env.DB.prepare(
+        `UPDATE portal_jobs SET status='failed', error_message=?, completed_at=datetime('now') WHERE id=?`
+      ).bind(msg, jobId).run();
+    } catch (e) {}
+  };
+
+  try {
+    const { collectResearch, writePortalContent } = await import('./lib/portal-generator');
+    const { renderPortalMemo } = await import('./pages/portal-memo');
+
+    await setStep('researching', 'Fetching 10-K + 10-Q from EDGAR', 0);
+    const research = await collectResearch({ ticker });
+    if (!research.filing_10k_url) {
+      return fail(`Could not locate SEC 10-K for ${ticker}. EDGAR may not have this ticker, or it's foreign-listed. Try another symbol.`);
+    }
+
+    await setStep('writing', 'Forming thesis · drafting memo sections', 1);
+    const content = await writePortalContent(env.AI, research);
+
+    await setStep('writing', 'Assembling memo HTML', 3);
+    const memoHtml = renderPortalMemo({
+      ticker: research.ticker,
+      company: research.company,
+      content,
+      quote: research.quote,
+      filing_10k_url: research.filing_10k_url,
+      filing_10k_date: research.filing_10k_date,
+      generated_at: new Date().toISOString(),
+    });
+
+    await env.REQUESTS.put(`portal:${research.ticker}:memo`, memoHtml, { expirationTtl: 60 * 60 * 24 * 90 });
+    await env.REQUESTS.put(`portal:${research.ticker}:content`, JSON.stringify(content), { expirationTtl: 60 * 60 * 24 * 90 });
+
+    await setStep('complete', 'Portal ready', 5);
+    await env.DB.prepare(
+      `UPDATE portal_jobs SET status='complete', step=?, pages_complete=5, completed_at=datetime('now') WHERE id=?`
+    ).bind('Portal ready', jobId).run();
+  } catch (err) {
+    console.error('[portal] generation failed', err);
+    await fail(String(err).slice(0, 500));
+  }
+}
+
+function isMounted(url: URL): boolean {
+  return MOUNT_HOSTS.has(url.hostname) &&
+    (url.pathname === MOUNT_PREFIX || url.pathname.startsWith(MOUNT_PREFIX + '/'));
+}
+
+function rewriteAbsolute(value: string | null): string | null {
+  if (!value) return value;
+  if (!value.startsWith('/')) return value;
+  if (value.startsWith('//')) return value;
+  if (value.startsWith(MOUNT_PREFIX + '/') || value === MOUNT_PREFIX) return value;
+  return MOUNT_PREFIX + value;
+}
+
+// Client-side wrapper that prefixes absolute-path fetch() calls and
+// location.href writes with the mount prefix. Injected into every HTML
+// response served under the mount.
+const CLIENT_PATCH = `<script>(function(){
+var base=${JSON.stringify(MOUNT_PREFIX)};
+window.__BASE_PATH__=base;
+var orig=window.fetch;
+window.fetch=function(u,o){
+  if(typeof u==='string'&&u[0]==='/'&&u[1]!=='/'&&u.indexOf(base+'/')!==0&&u!==base){u=base+u;}
+  return orig.call(this,u,o);
+};
+var desc=Object.getOwnPropertyDescriptor(window.Location.prototype,'href')||Object.getOwnPropertyDescriptor(Location.prototype,'href');
+// location.href setter intercept — fall back to monkey-patching on the instance.
+try{Object.defineProperty(location,'href',{
+  get:function(){return desc.get.call(location);},
+  set:function(v){
+    if(typeof v==='string'&&v[0]==='/'&&v[1]!=='/'&&v.indexOf(base+'/')!==0&&v!==base){v=base+v;}
+    desc.set.call(location,v);
+  }
+});}catch(e){}
+})();</script>`;
+
+async function mountedFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  if (!isMounted(url)) return app.fetch(request, env, ctx);
+
+  const innerUrl = new URL(request.url);
+  const stripped = url.pathname.slice(MOUNT_PREFIX.length);
+  innerUrl.pathname = stripped === '' ? '/' : stripped;
+  const innerReq = new Request(innerUrl, request);
+  const resp = await app.fetch(innerReq, env, ctx);
+
+  // 3xx → prepend mount to Location header.
+  if (resp.status >= 300 && resp.status < 400) {
+    const loc = resp.headers.get('location');
+    const newLoc = rewriteAbsolute(loc);
+    if (newLoc && newLoc !== loc) {
+      const h = new Headers(resp.headers);
+      h.set('location', newLoc);
+      return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: h });
+    }
+    return resp;
+  }
+
+  const ct = resp.headers.get('content-type') || '';
+  if (!ct.includes('text/html')) return resp;
+
+  const rewriteAttr = (attr: string) => ({
+    element(el: Element) {
+      const v = el.getAttribute(attr);
+      const nv = rewriteAbsolute(v);
+      if (nv && nv !== v) el.setAttribute(attr, nv);
+    },
+  });
+
+  return new HTMLRewriter()
+    .on('a[href]', rewriteAttr('href'))
+    .on('form[action]', rewriteAttr('action'))
+    .on('link[href]', rewriteAttr('href'))
+    .on('script[src]', rewriteAttr('src'))
+    .on('img[src]', rewriteAttr('src'))
+    .on('source[src]', rewriteAttr('src'))
+    .on('iframe[src]', rewriteAttr('src'))
+    .on('head', {
+      element(el) { el.append(CLIENT_PATCH, { html: true }); },
+    })
+    .transform(resp);
+}
 
 // ==========================================================================
 // CRON: nightly price refresh
 // ==========================================================================
 export default {
-  fetch: app.fetch,
+  fetch: mountedFetch,
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
     // Step 1: refresh all prices
     try {

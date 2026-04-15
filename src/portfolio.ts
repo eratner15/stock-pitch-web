@@ -1,5 +1,5 @@
 // Shared portfolio metadata — powers the gallery on both brand variants.
-// Portals themselves live on cafecito-ai.com/lcs/<ticker>/ for MVP; will migrate.
+// Portals live at research.levincap.com/<ticker>/ (public read-only research site).
 
 export interface PortalEntry {
   ticker: string;
@@ -27,7 +27,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'ow',
     headline_stat: '+43%',
     headline_label: 'LCS PT upside',
-    url: 'https://cafecito-ai.com/lcs/msgs/',
+    url: 'https://research.levincap.com/msgs/',
     date: 'April 2026',
     featured: true,
   },
@@ -41,7 +41,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'buy',
     headline_stat: '+26%',
     headline_label: 'FY29 accretion',
-    url: 'https://cafecito-ai.com/lcs/kmb/',
+    url: 'https://research.levincap.com/kmb/',
     date: 'April 2026',
     featured: true,
   },
@@ -55,7 +55,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'buy',
     headline_stat: '$150',
     headline_label: 'LCS PT',
-    url: 'https://cafecito-ai.com/lcs/bx/',
+    url: 'https://research.levincap.com/bx/',
     date: 'April 2026',
     featured: true,
   },
@@ -69,7 +69,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'part',
     headline_stat: '$1.8B',
     headline_label: 'Implied IPO EV',
-    url: 'https://cafecito-ai.com/lcs/pete/',
+    url: 'https://research.levincap.com/pete/',
     date: 'April 2026',
   },
   {
@@ -82,7 +82,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'buy',
     headline_stat: 'SOTP',
     headline_label: 'Multi-segment',
-    url: 'https://cafecito-ai.com/lcs/amzn/',
+    url: 'https://research.levincap.com/amzn/',
     date: 'March 2026',
   },
   {
@@ -95,7 +95,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'buy',
     headline_stat: '5x',
     headline_label: 'EPS recovery',
-    url: 'https://cafecito-ai.com/lcs/knx/',
+    url: 'https://research.levincap.com/knx/',
     date: 'March 2026',
   },
   {
@@ -108,7 +108,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'buy',
     headline_stat: 'Carve-out',
     headline_label: 'Integration',
-    url: 'https://cafecito-ai.com/lcs/rrx/',
+    url: 'https://research.levincap.com/rrx/',
     date: 'February 2026',
   },
   {
@@ -121,7 +121,7 @@ export const PORTFOLIO: PortalEntry[] = [
     rating_class: 'buy',
     headline_stat: 'Backlog',
     headline_label: 'Conversion',
-    url: 'https://cafecito-ai.com/lcs/flr/',
+    url: 'https://research.levincap.com/flr/',
     date: 'February 2026',
   },
 ];
