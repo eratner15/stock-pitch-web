@@ -10,6 +10,16 @@ import { PORTFOLIO } from './portfolio';
 import { fetchPrice, fetchPriceStrict, calcReturn } from './lib/prices';
 import { generateBrief } from './lib/ai-brief';
 import { escapeHtml, isValidEmail, sanitizeTicker, checkRateLimit, newId } from './lib/security';
+import {
+  ensureTopTenPortfolio,
+  rebalanceTopTen,
+  computeCurrentNAV,
+  snapshotNAV,
+  getNavHistory,
+  type PortfolioRow,
+} from './lib/portfolios';
+import { renderPortfolioDetail } from './pages/portfolio-detail';
+import { renderPortfolioCard } from './pages/portfolio-card';
 
 interface Env {
   DB: D1Database;
@@ -431,6 +441,163 @@ app.get('/admin/calls', async (c) => {
   return c.json({ count: result.results?.length ?? 0, calls: result.results });
 });
 
+// ==========================================================================
+// PORTFOLIO: detail page — /p/:slug
+// ==========================================================================
+app.get('/p/:slug', async (c) => {
+  const slug = c.req.param('slug').toLowerCase().trim();
+  const portfolio = await c.env.DB
+    .prepare('SELECT * FROM portfolios WHERE slug = ?')
+    .bind(slug)
+    .first<PortfolioRow>();
+  if (!portfolio) return c.text('Portfolio not found', 404);
+
+  try {
+    const { nav, positions_with_perf, total_return_pct } = await computeCurrentNAV(c.env.DB, portfolio.id);
+    const nav_history = await getNavHistory(c.env.DB, portfolio.id, 90);
+    return c.html(renderPortfolioDetail({
+      portfolio,
+      positions: positions_with_perf,
+      nav,
+      total_return_pct,
+      nav_history,
+      brand: c.get('brand'),
+      origin: getOrigin(c),
+    }));
+  } catch (err) {
+    console.error('Portfolio detail error:', err);
+    return c.text('Error loading portfolio', 500);
+  }
+});
+
+// ==========================================================================
+// PORTFOLIO: share card HTML (for Browser Rendering to screenshot)
+// ==========================================================================
+app.get('/p/:slug/card', async (c) => {
+  const slug = c.req.param('slug').toLowerCase().trim();
+  const portfolio = await c.env.DB
+    .prepare('SELECT * FROM portfolios WHERE slug = ?')
+    .bind(slug)
+    .first<PortfolioRow>();
+  if (!portfolio) return c.text('Not found', 404);
+
+  const { nav, positions_with_perf, total_return_pct } = await computeCurrentNAV(c.env.DB, portfolio.id);
+  const nav_history = await getNavHistory(c.env.DB, portfolio.id, 30);
+  return c.html(renderPortfolioCard({
+    portfolio,
+    positions: positions_with_perf,
+    nav,
+    total_return_pct,
+    nav_history,
+    brand: c.get('brand'),
+  }));
+});
+
+// ==========================================================================
+// PORTFOLIO: OG PNG (cached 24h in KV, generated via Browser Rendering)
+// ==========================================================================
+app.get('/p/:slug/og.png', async (c) => {
+  const slug = c.req.param('slug').toLowerCase().trim();
+  const cacheKey = `og:p:${slug}`;
+  const origin = getOrigin(c);
+
+  try {
+    const cached = await c.env.REQUESTS.get(cacheKey, 'arrayBuffer');
+    if (cached) {
+      return new Response(cached, {
+        headers: {
+          'Content-Type': 'image/png',
+          'Cache-Control': 'public, max-age=86400',
+          'X-Cache': 'HIT',
+        },
+      });
+    }
+  } catch (e) {
+    console.error('portfolio og cache read failed', e);
+  }
+
+  let browser: any = null;
+  try {
+    browser = await puppeteer.launch(c.env.BROWSER);
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1200, height: 630 });
+    await page.goto(`${origin}/p/${slug}/card`, { waitUntil: 'networkidle0', timeout: 20000 });
+    await page.evaluate(() => (document as any).fonts.ready);
+    const png = await page.screenshot({
+      type: 'png',
+      fullPage: false,
+      clip: { x: 0, y: 0, width: 1200, height: 630 },
+    });
+    try {
+      await c.env.REQUESTS.put(cacheKey, png as ArrayBuffer, { expirationTtl: 86400 });
+    } catch (e) {}
+    return new Response(png as BodyInit, {
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'public, max-age=86400',
+        'X-Cache': 'MISS',
+      },
+    });
+  } catch (err) {
+    console.error('Portfolio OG generation error:', err);
+    return c.text('Share card unavailable', 500);
+  } finally {
+    if (browser) {
+      try { await browser.close(); } catch (e) {}
+    }
+  }
+});
+
+// ==========================================================================
+// PORTFOLIO: JSON API (read-only)
+// ==========================================================================
+app.get('/api/portfolios/:slug', async (c) => {
+  const slug = c.req.param('slug').toLowerCase().trim();
+  const portfolio = await c.env.DB
+    .prepare('SELECT * FROM portfolios WHERE slug = ?')
+    .bind(slug)
+    .first<PortfolioRow>();
+  if (!portfolio) return c.json({ error: 'not found' }, 404);
+  const { nav, positions_with_perf, total_return_pct } = await computeCurrentNAV(c.env.DB, portfolio.id);
+  const nav_history = await getNavHistory(c.env.DB, portfolio.id, 90);
+  return c.json({
+    portfolio,
+    nav,
+    total_return_pct,
+    positions: positions_with_perf,
+    nav_history,
+  });
+});
+
+// ==========================================================================
+// ADMIN: manually trigger portfolio rebalance (for setup / debugging)
+// ==========================================================================
+app.post('/admin/portfolios/:slug/rebalance', async (c) => {
+  const configured = c.env.ADMIN_KEY;
+  const supplied = c.req.header('x-admin-key') || c.req.query('key');
+  if (!configured || !supplied || supplied !== configured) {
+    return c.text('Unauthorized', 401);
+  }
+  const slug = c.req.param('slug').toLowerCase().trim();
+
+  // Auto-create the top10 portfolio on first rebalance if it doesn't exist
+  if (slug === 'top10') {
+    await ensureTopTenPortfolio(c.env.DB);
+  }
+
+  const portfolio = await c.env.DB
+    .prepare('SELECT * FROM portfolios WHERE slug = ?')
+    .bind(slug)
+    .first<PortfolioRow>();
+  if (!portfolio) return c.json({ error: 'portfolio not found' }, 404);
+
+  const result = await rebalanceTopTen(c.env.DB, portfolio.id);
+  const nav = await snapshotNAV(c.env.DB, portfolio.id);
+  // Invalidate OG cache
+  try { await c.env.REQUESTS.delete(`og:p:${slug}`); } catch (e) {}
+  return c.json({ success: true, rebalance: result, nav });
+});
+
 // Brand probe
 app.get('/api/brand', (c) => c.json({
   brand: c.get('brand'),
@@ -445,6 +612,7 @@ app.notFound((c) => c.text('Not Found', 404));
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env): Promise<void> {
+    // Step 1: refresh all prices
     try {
       const tickers = await env.DB.prepare(
         'SELECT DISTINCT ticker FROM calls WHERE status = ?'
@@ -461,8 +629,26 @@ export default {
       }
       console.log(`Refreshed ${list.length} tickers`);
     } catch (err) {
-      console.error('Cron refresh error:', err);
+      console.error('Cron price refresh error:', err);
     }
+
+    // Step 2: rebalance auto portfolios + snapshot NAV
+    try {
+      const portfolioId = await ensureTopTenPortfolio(env.DB);
+      const result = await rebalanceTopTen(env.DB, portfolioId);
+      const nav = await snapshotNAV(env.DB, portfolioId);
+      console.log(`Rebalance top10: opened=${result.opened} closed=${result.closed} held=${result.held} nav=$${nav.toFixed(2)}`);
+    } catch (err) {
+      console.error('Cron rebalance error:', err);
+    }
+
+    // Invalidate portfolio OG cache after NAV updates
+    try {
+      // KV doesn't have a "delete by prefix" — use a list + delete in parallel
+      // Only expire the few known portfolio slugs; cheap enough to hit them explicitly.
+      const slugs = ['top10'];
+      await Promise.all(slugs.map(s => env.REQUESTS.delete(`og:p:${s}`)));
+    } catch (e) {}
   },
 };
 
