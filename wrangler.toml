@@ -1,0 +1,37 @@
+name = "stock-pitch-web"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Preview deploys to workers.dev subdomain until domains are registered
+# Once stockpitch.app and research.levincap.com are ready, uncomment:
+# routes = [
+#   { pattern = "stockpitch.app", custom_domain = true },
+#   { pattern = "stockpitch.app/*", zone_name = "stockpitch.app" },
+#   { pattern = "research.levincap.com", custom_domain = true },
+#   { pattern = "research.levincap.com/*", zone_name = "levincap.com" }
+# ]
+
+[vars]
+ENVIRONMENT = "preview"
+
+[[kv_namespaces]]
+binding = "REQUESTS"
+id = "3b589a51483143e399b7f69ccaf2d6f0"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "stock-pitch-db"
+database_id = "ec74e895-3984-4d1b-ba35-5111a7d3fcef"
+
+# Native Cloudflare Workers AI — for free-tier Gemma generation
+[ai]
+binding = "AI"
+
+# Browser Rendering — for auto-generated OG share card PNGs
+[browser]
+binding = "BROWSER"
+
+# Nightly cron to refresh prices + recompute leaderboard
+[triggers]
+crons = ["0 23 * * *"]  # 11 PM UTC = 6 PM EST, after market close
