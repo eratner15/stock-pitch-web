@@ -50,7 +50,7 @@ export function renderPortalIndex(input: PageInput): string {
   </div>
 
   <div class="bluf" style="max-width:760px;margin-top:32px">
-    <strong>The call:</strong> ${escapeHtml(stripMd(content.answer).slice(0, 500))}
+    <strong>The call:</strong> ${escapeHtml(stripMd(content.bluf || content.executiveSummary || '').slice(0, 500))}
   </div>
 
   <section class="index-grid">

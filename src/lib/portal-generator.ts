@@ -83,9 +83,12 @@ export async function collectResearch(args: {
     // Aggressive cap: ~10K chars total excerpt. Workers AI models throttle
     // heavily on large contexts; tighter is faster and the model only
     // needs signal, not full filings.
-    mda_excerpt: tenK.mda.slice(0, 6000),
-    risks_excerpt: tenK.risks.slice(0, 3000),
-    tenq_excerpt: tenQ.text.slice(0, 3000),
+    // Larger excerpts so the model has real material to cite from.
+    // AMZN-caliber output needs dense number references + specific
+    // names + management quotes pulled from the actual 10-K.
+    mda_excerpt: tenK.mda.slice(0, 30000),
+    risks_excerpt: tenK.risks.slice(0, 15000),
+    tenq_excerpt: tenQ.text.slice(0, 10000),
     thesis: args.thesis ?? null,
     direction: args.direction ?? null,
     price_target: args.price_target ?? null,
@@ -180,19 +183,47 @@ async function runModel(
  * Shared voice prompt — enforced on every call so the whole portal reads
  * like one analyst wrote it.
  */
-const VOICE_SYSTEM = `You are a senior sell-side equity research analyst at Levin Capital Strategies. Voice: direct, specific, analytical. No hype, no exclamation points. Every financial number MUST carry a source tag: [10-K], [10-Q], [Transcript], [IR], [Market], [Consensus], [Computed], or [Estimated] with methodology. If you cannot source a number, say "not disclosed" rather than invent one. Write institutional prose; never address the reader as "you".`;
+const VOICE_SYSTEM = `You are a senior sell-side equity research analyst covering this name for a decade at Levin Capital Strategies. Voice: direct, specific, analytical, institutional prose. Zero hype. Zero exclamation points. Zero hedge-words like "could potentially" or "may possibly". Write with conviction backed by specific data.
+
+EVERY financial figure MUST carry a bracketed source tag:
+  [10-K] — SEC annual filing     [10-Q] — quarterly filing
+  [Transcript] — earnings call   [IR] — investor relations
+  [Market] — live market data    [Consensus] — analyst consensus
+  [Computed] — derived from the above, method named inline
+  [Estimated] — our estimate with methodology shown
+
+RULES:
+- Target word counts are firm — hit them, don't go under.
+- Include SPECIFIC numbers: dollar amounts, percentages, ratios, dates. At least 6 specific data points per 300 words.
+- Use SPECIFIC names: CEOs, CFOs, key products, named competitors, specific analysts or banks when relevant.
+- Prefer concrete nouns: "Trainium chips" not "AI accelerators". "Robotaxi event Oct 2024" not "recent announcement".
+- If you don't know a number, write "not disclosed" or "pending" — NEVER invent.
+- You may emit Tufte-style sidenotes with marker [[SIDENOTE: fact or callout]]. Use 1-2 per section for non-obvious specifics worth spotlighting.
+- NO preamble, NO meta-commentary, NO "In summary" endings. Just the analysis.`;
 
 export interface PortalContent {
-  businessSummary: string;       // 2-3 paragraphs, [10-K] tags
-  situation: string;             // SCQA paragraph
-  complication: string;
-  centralQuestion: string;
-  answer: string;
-  bullPoints: string[];          // 3-5 bullets
-  bearPoints: string[];          // 2-3 bullets
-  valuationNote: string;         // 1 paragraph, cites quote + peers
+  tagline: string;                                 // one-line pitch
+  bluf: string;                                    // 3-sentence top-of-memo answer
+
+  // 10-section memo body — each section is its own rich paragraph block
+  executiveSummary: string;                        // 300-400 words
+  businessOverview: string;                        // 400-500 words
+  thesisSituation: string;                         // 300-400 words
+  thesisComplication: string;                      // 300-400 words
+  supportingPoint1: { heading: string; body: string }; // deep dive on bull #1
+  supportingPoint2: { heading: string; body: string }; // deep dive on bull #2
+  keyRisks: string;                                // 300-400 words, multi-risk
+  valuationSection: string;                        // 400-500 words, method + multiples
+  priceTargetSection: string;                      // 300-400 words, upside/downside math
+  catalystsSection: string;                        // 300-400 words, timeline
+
+  // Flat arrays still used by bulls/bears card + diligence block
+  bullPoints: string[];
+  bearPoints: string[];
   diligenceQuestions: Array<{ q: string; rationale: string }>;
-  tagline: string;               // one-line thesis
+
+  // Tufte sidenotes — rendered as margin callouts
+  sidenotes: string[];
 
   // Model page
   financials: {
@@ -204,14 +235,14 @@ export interface PortalContent {
 
   // Consensus page
   consensus: {
-    streetView: string;           // paragraph on sell-side consensus
-    peerTickers: string[];        // 4-6 ticker symbols
-    peerNote: string;             // paragraph comparing target to peers
-    ourPt: string;                // "$X — Y% upside/downside"
-    ptMethodology: string;        // 1-paragraph how we get there
+    streetView: string;
+    peerTickers: string[];
+    peerNote: string;
+    ourPt: string;
+    ptMethodology: string;
   };
 
-  // Deck page — slide-by-slide titles + bullets
+  // Deck page
   deckSlides: Array<{ title: string; bullets: string[]; speakerNote: string }>;
 }
 
@@ -257,29 +288,60 @@ Company: ${r.company}
 Research card:
 ${researchCard}`;
 
-  console.log(`[portal][${r.ticker}] 5-call generation. mda=${r.mda_excerpt.length} risks=${r.risks_excerpt.length} 10q=${r.tenq_excerpt.length}`);
-  // ---- Call A: Core thesis ----
-  const rawA = await runModel(
+  console.log(`[portal][${r.ticker}] deep generation start. mda=${r.mda_excerpt.length} risks=${r.risks_excerpt.length} 10q=${r.tenq_excerpt.length}`);
+
+  // PARALLEL — 8 calls at once. Workers AI paid tier handles this. Cuts total
+  // runtime from ~3 min sequential to ~60-75s.
+  const [rawA, rawA2, rawA3, rawA4, rawB, rawC, rawD, rawE] = await Promise.all([
+    runModel(
     ai, PRIMARY_MODEL,
     sysJson(`{
-  "tagline": "one-sentence pitch, under 20 words, no period",
-  "businessSummary": "2 short paragraphs, each 80 words, with [10-K] tags",
-  "situation": "one paragraph, 60 words",
-  "complication": "one paragraph, 60 words",
-  "centralQuestion": "one sentence",
-  "answer": "one paragraph, 80 words, ends with a price target",
-  "bullPoints": ["3-5 bullets, 12-20 words each"],
-  "bearPoints": ["2-3 bullets, 12-20 words each"],
-  "valuationNote": "one paragraph, 80 words"
+  "tagline": "one-sentence pitch under 20 words, no period",
+  "bluf": "3-sentence top-of-memo answer stating the call + price target + catalyst timeline",
+  "executiveSummary": "300-word paragraph explaining the investment thesis — setup, mispricing, path to PT. Every claim sourced with [10-K]/[Market]/[Estimated] tags. Name specific segments, dollar amounts, growth rates. Include 1 sidenote marker [[SIDENOTE: ...]].",
+  "businessOverview": "400-word analysis of the business: what they sell, segment breakdown with specific revenue contribution, scale (LTM revenue, employees, geographic footprint), and ONE non-obvious structural feature. Every number [10-K]-tagged. 1-2 sidenotes.",
+  "thesisSituation": "300-word paragraph on what the MARKET currently prices — consensus EPS, consensus PT mean, current EV/EBITDA or P/E multiple, how the stock has performed. Tag with [Consensus] / [Market] / [Estimated] where needed.",
+  "thesisComplication": "300-word paragraph on what's MISPRICED. Specific numerical gap between our view and consensus. Reference the 10-K material the market seems to be discounting.",
+  "valuationSection": "400-word section on valuation. Name the method (SOTP / DCF / multiple / asset-value). Show the math: segment-level multiples × segment EBITDA = implied EV. If DCF, state WACC + terminal growth. 1 sidenote.",
+  "priceTargetSection": "300-word section. State our PT explicitly. Show upside/downside % vs current price. Scenario table in prose: Base / Bull / Bear. Probability-weighted expected value.",
+  "bullPoints": ["5 specific bullets each 18-28 words citing a number from the 10-K"],
+  "bearPoints": ["3 specific bullets each 18-28 words citing a risk from Item 1A"]
 }`),
-    `Produce the CORE THESIS JSON for ${r.ticker}.\n\n${userBase}`,
-    { max_tokens: 2000, temperature: 0.5, timeoutMs: 45_000 }
-  );
-  const thesisParsed = parsePortalJson(rawA);
-  console.log(`[portal][${r.ticker}] thesis keys: ${Object.keys(thesisParsed).length}`);
-
-  // ---- Call B: Financials ----
-  const rawB = await runModel(
+    `Produce the CORE THESIS JSON for ${r.ticker}. This is institutional equity research — write as if you've covered this name for 10 years.\n\n${userBase}`,
+    { max_tokens: 4500, temperature: 0.5, timeoutMs: 60_000 }
+  ),
+    // ---- Call A2: Supporting point #1 deep dive ----
+    runModel(
+    ai, PRIMARY_MODEL,
+    sysJson(`{
+  "heading": "8-12 word H2 headline making a specific claim about one segment/product/strategy",
+  "body": "500-600 word deep-dive on this ONE specific bull driver. Specific numbers, segment revenue, growth rates, margin trajectory. At least 2 sidenotes [[SIDENOTE: ...]]. Cite [10-K] dense."
+}`),
+    `DEEP DIVE on the STRONGEST bull point for ${r.ticker}. Pick the most material structural advantage disclosed in the 10-K MD&A. Write a 500-word section that stands on its own.\n\n${userBase}`,
+    { max_tokens: 2500, temperature: 0.55, timeoutMs: 60_000 }
+  ),
+    // ---- Call A3: Supporting point #2 ----
+    runModel(
+    ai, PRIMARY_MODEL,
+    sysJson(`{
+  "heading": "8-12 word H2 headline",
+  "body": "500-600 word deep-dive on a DIFFERENT bull driver than the first. 2 sidenotes. Dense [10-K]."
+}`),
+    `DEEP DIVE on the SECOND-STRONGEST bull point for ${r.ticker}. Different theme from the first deep-dive. Pick a segment, product launch, margin expansion, cap-ex cycle, or capital return story.\n\n${userBase}`,
+    { max_tokens: 2500, temperature: 0.55, timeoutMs: 60_000 }
+  ),
+    // ---- Call A4: Risks section ----
+    runModel(
+    ai, PRIMARY_MODEL,
+    sysJson(`{
+  "keyRisks": "400-word section covering 3-4 SPECIFIC risks that could invalidate the thesis. Each risk gets ~100 words. Pull from Item 1A Risk Factors. Label each risk as a bold heading. Include 1 sidenote.",
+  "catalystsSection": "400-word section listing 3-5 time-bound catalysts over the next 12-24 months that move the stock. Each catalyst dated (e.g. 'Q4 FY26 earnings, February 2026'). Explain WHY each moves the stock."
+}`),
+    `Produce RISKS + CATALYSTS JSON for ${r.ticker}. Be specific — name the events, dates, quantify where possible.\n\n${userBase}`,
+    { max_tokens: 2500, temperature: 0.5, timeoutMs: 60_000 }
+  ),
+    // ---- Call B: Financials ----
+    runModel(
     ai, PRIMARY_MODEL,
     sysJson(`{
   "historical": [
@@ -295,11 +357,9 @@ ${researchCard}`;
 }`),
     `Produce the FINANCIALS JSON for ${r.ticker}. 3 historical rows, 3 projected rows, 4-6 keyMetrics.\n\n${userBase}`,
     { max_tokens: 1400, temperature: 0.3, timeoutMs: 45_000 }
-  );
-  const financialsParsed = parsePortalJson(rawB);
-
-  // ---- Call C: Consensus + peer comps ----
-  const rawC = await runModel(
+  ),
+    // ---- Call C: Consensus + peer comps ----
+    runModel(
     ai, PRIMARY_MODEL,
     sysJson(`{
   "streetView": "one paragraph, 60 words, with [Consensus] tags",
@@ -310,11 +370,9 @@ ${researchCard}`;
 }`),
     `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? `$${r.quote.price.toFixed(2)}` : 'n/a'}. Give 4-6 peer tickers.\n\n${userBase}`,
     { max_tokens: 1200, temperature: 0.5, timeoutMs: 45_000 }
-  );
-  const consensusParsed = parsePortalJson(rawC);
-
-  // ---- Call D: 8-slide deck ----
-  const rawD = await runModel(
+  ),
+    // ---- Call D: 8-slide deck ----
+    runModel(
     ai, PRIMARY_MODEL,
     sysJson(`{
   "deckSlides": [
@@ -323,11 +381,9 @@ ${researchCard}`;
 }`),
     `Produce DECK JSON for ${r.ticker}. EXACTLY 8 slides in order: Cover, Business snapshot, Situation, Complication, Bull case, Bear case, Valuation & PT, Call to action. Each slide has exactly 3 bullets (8-15 words each) and one speakerNote.\n\n${userBase}`,
     { max_tokens: 1800, temperature: 0.5, timeoutMs: 45_000 }
-  );
-  const deckParsed = parsePortalJson(rawD);
-
-  // ---- Call E: Diligence questions ----
-  const rawE = await runModel(
+  ),
+    // ---- Call E: Diligence questions ----
+    runModel(
     ai, FAST_MODEL,
     sysJson(`{
   "diligenceQuestions": [
@@ -336,63 +392,89 @@ ${researchCard}`;
 }`),
     `Produce DILIGENCE JSON with EXACTLY 5 probing questions a Levin analyst asks management at the next earnings call, each with a one-line rationale.\n\n${userBase}`,
     { max_tokens: 800, temperature: 0.6, timeoutMs: 30_000 }
-  );
+  ),
+  ]);
+  const thesisParsed = parsePortalJson(rawA);
+  const support1Parsed = parsePortalJson(rawA2);
+  const support2Parsed = parsePortalJson(rawA3);
+  const risksParsed = parsePortalJson(rawA4);
+  const financialsParsed = parsePortalJson(rawB);
+  const consensusParsed = parsePortalJson(rawC);
+  const deckParsed = parsePortalJson(rawD);
   const diligenceParsed = parsePortalJson(rawE);
+  console.log(`[portal][${r.ticker}] all 8 calls parsed. thesis keys: ${Object.keys(thesisParsed).length}`);
 
-  // Merge all five into a single parsed object
-  const parsed: any = {
-    ...thesisParsed,
-    financials: financialsParsed,
-    consensus: consensusParsed,
-    deckSlides: deckParsed.deckSlides ?? [],
-    diligenceQuestions: diligenceParsed.diligenceQuestions ?? [],
+  // Extract sidenote markers + strip them from the prose, collecting to sidebar
+  const allSidenotes: string[] = [];
+  const extractSidenotes = (text: string | undefined): string => {
+    if (!text) return '';
+    return text.replace(/\[\[SIDENOTE:\s*([^\]]+)\]\]/gi, (_, note) => {
+      allSidenotes.push(String(note).trim());
+      return '';
+    }).replace(/\s+/g, ' ').trim();
   };
 
   return {
-    businessSummary: normalizeNumbers(parsed.businessSummary || fallbackBusiness(r)),
-    situation: normalizeNumbers(parsed.situation || 'Pending regeneration.'),
-    complication: normalizeNumbers(parsed.complication || 'Pending regeneration.'),
-    centralQuestion: normalizeNumbers(parsed.centralQuestion || 'Pending regeneration.'),
-    answer: normalizeNumbers(parsed.answer || 'Pending regeneration.'),
-    bullPoints: (parsed.bullPoints?.length ? parsed.bullPoints : ['Pending regeneration.']).map(normalizeNumbers),
-    bearPoints: (parsed.bearPoints?.length ? parsed.bearPoints : ['Pending regeneration.']).map(normalizeNumbers),
-    valuationNote: normalizeNumbers(parsed.valuationNote || fallbackValuation(r)),
-    diligenceQuestions: (parsed.diligenceQuestions || []).map((d: any) => ({
-      q: normalizeNumbers(String(d.q || '')),
-      rationale: normalizeNumbers(String(d.rationale || '')),
-    })).filter((d: any) => d.q),
-    tagline: (parsed.tagline || `${r.company} — research brief`).replace(/^["']|["']$/g, '').replace(/\.$/, ''),
+    tagline: (thesisParsed.tagline || `${r.company} — research brief`).replace(/^["']|["']$/g, '').replace(/\.$/, ''),
+    bluf: normalizeNumbers(extractSidenotes(thesisParsed.bluf) || thesisParsed.answer || 'Price target pending.'),
+    executiveSummary: normalizeNumbers(extractSidenotes(thesisParsed.executiveSummary) || fallbackBusiness(r)),
+    businessOverview: normalizeNumbers(extractSidenotes(thesisParsed.businessOverview) || 'Business overview pending.'),
+    thesisSituation: normalizeNumbers(extractSidenotes(thesisParsed.thesisSituation) || 'Situation analysis pending.'),
+    thesisComplication: normalizeNumbers(extractSidenotes(thesisParsed.thesisComplication) || 'Complication pending.'),
+    supportingPoint1: {
+      heading: String(support1Parsed.heading || 'Key bull thesis').trim(),
+      body: normalizeNumbers(extractSidenotes(support1Parsed.body) || 'Deep dive pending.'),
+    },
+    supportingPoint2: {
+      heading: String(support2Parsed.heading || 'Secondary bull thesis').trim(),
+      body: normalizeNumbers(extractSidenotes(support2Parsed.body) || 'Deep dive pending.'),
+    },
+    keyRisks: normalizeNumbers(extractSidenotes(risksParsed.keyRisks) || 'Risks pending.'),
+    catalystsSection: normalizeNumbers(extractSidenotes(risksParsed.catalystsSection) || 'Catalysts pending.'),
+    valuationSection: normalizeNumbers(extractSidenotes(thesisParsed.valuationSection) || fallbackValuation(r)),
+    priceTargetSection: normalizeNumbers(extractSidenotes(thesisParsed.priceTargetSection) || 'Price target pending.'),
+    bullPoints: (Array.isArray(thesisParsed.bullPoints) && thesisParsed.bullPoints.length
+      ? thesisParsed.bullPoints : ['Pending regeneration.']).map((b: any) => normalizeNumbers(String(b))),
+    bearPoints: (Array.isArray(thesisParsed.bearPoints) && thesisParsed.bearPoints.length
+      ? thesisParsed.bearPoints : ['Pending regeneration.']).map((b: any) => normalizeNumbers(String(b))),
+    diligenceQuestions: (Array.isArray(diligenceParsed.diligenceQuestions) ? diligenceParsed.diligenceQuestions : [])
+      .map((d: any) => ({
+        q: normalizeNumbers(String(d.q || '')),
+        rationale: normalizeNumbers(String(d.rationale || '')),
+      }))
+      .filter((d: any) => d.q),
+    sidenotes: allSidenotes,
     financials: {
-      historical: Array.isArray(parsed.financials?.historical) ? parsed.financials.historical.slice(0, 5).map((h: any) => ({
+      historical: Array.isArray(financialsParsed?.historical) ? financialsParsed.historical.slice(0, 5).map((h: any) => ({
         year: String(h.year || ''),
         revenue: normalizeNumbers(String(h.revenue || '—')),
         operatingIncome: normalizeNumbers(String(h.operatingIncome || '—')),
         eps: normalizeNumbers(String(h.eps || '—')),
       })) : [],
-      projected: Array.isArray(parsed.financials?.projected) ? parsed.financials.projected.slice(0, 5).map((p: any) => ({
+      projected: Array.isArray(financialsParsed?.projected) ? financialsParsed.projected.slice(0, 5).map((p: any) => ({
         year: String(p.year || ''),
         revenue: normalizeNumbers(String(p.revenue || '—')),
         ebitdaMargin: String(p.ebitdaMargin || '—'),
         eps: normalizeNumbers(String(p.eps || '—')),
       })) : [],
-      keyMetrics: Array.isArray(parsed.financials?.keyMetrics) ? parsed.financials.keyMetrics.slice(0, 8).map((k: any) => ({
+      keyMetrics: Array.isArray(financialsParsed?.keyMetrics) ? financialsParsed.keyMetrics.slice(0, 8).map((k: any) => ({
         label: String(k.label || ''),
         value: normalizeNumbers(String(k.value || '')),
         source: String(k.source || '[10-K]'),
       })).filter((k: any) => k.label) : [],
-      dcfNarrative: normalizeNumbers(parsed.financials?.dcfNarrative || ''),
+      dcfNarrative: normalizeNumbers(financialsParsed?.dcfNarrative || ''),
     },
     consensus: {
-      streetView: normalizeNumbers(parsed.consensus?.streetView || ''),
-      peerTickers: (Array.isArray(parsed.consensus?.peerTickers) ? parsed.consensus.peerTickers : [])
+      streetView: normalizeNumbers(consensusParsed?.streetView || ''),
+      peerTickers: (Array.isArray(consensusParsed?.peerTickers) ? consensusParsed.peerTickers : [])
         .map((t: any) => String(t).toUpperCase().trim())
         .filter((t: string) => /^[A-Z]{1,5}(\.[A-Z])?$/.test(t))
         .slice(0, 6),
-      peerNote: normalizeNumbers(parsed.consensus?.peerNote || ''),
-      ourPt: String(parsed.consensus?.ourPt || ''),
-      ptMethodology: normalizeNumbers(parsed.consensus?.ptMethodology || ''),
+      peerNote: normalizeNumbers(consensusParsed?.peerNote || ''),
+      ourPt: String(consensusParsed?.ourPt || ''),
+      ptMethodology: normalizeNumbers(consensusParsed?.ptMethodology || ''),
     },
-    deckSlides: (Array.isArray(parsed.deckSlides) ? parsed.deckSlides : []).slice(0, 10).map((s: any) => ({
+    deckSlides: (Array.isArray(deckParsed.deckSlides) ? deckParsed.deckSlides : []).slice(0, 10).map((s: any) => ({
       title: normalizeNumbers(String(s.title || '')),
       bullets: Array.isArray(s.bullets) ? s.bullets.map((b: any) => normalizeNumbers(String(b))).filter(Boolean) : [],
       speakerNote: normalizeNumbers(String(s.speakerNote || '')),
