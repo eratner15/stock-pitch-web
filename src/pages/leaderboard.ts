@@ -526,7 +526,7 @@ function renderLevincapLeaderboard(rows: LeaderboardRow[]): string {
 <title>The Ledger · Levin Capital Research</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;0,6..96,700;0,6..96,900;1,6..96,400;1,6..96,700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=IM+Fell+English+SC&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -548,17 +548,19 @@ function renderLevincapLeaderboard(rows: LeaderboardRow[]): string {
   --serial-red:#8E1C22;      /* engraved-certificate red for serials */
   --ledger-green:#0F3B2E;
   --ledger-red:#8B2A1E;
-  --display:'Bodoni Moda','Didot',Georgia,serif;
-  --body:'Cormorant Garamond','EB Garamond',Georgia,serif;
+  --display:'Fraunces','Source Serif 4',Georgia,serif;
+  --body:'Source Serif 4','Lora',Georgia,serif;
   --smcp:'IM Fell English SC',serif;
-  --egar:'EB Garamond',Georgia,serif;
-  --script:'Cormorant Garamond',serif; /* italic for subtitles */
+  --egar:'Source Serif 4',Georgia,serif;
+  --script:'Fraunces',serif;
 }
 html{background:var(--paper)}
 body{
-  font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.55;font-size:19px;
+  font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.62;font-size:18px;
+  font-weight:450;
   -webkit-font-smoothing:antialiased;
-  font-feature-settings:'onum' 1,'liga' 1,'dlig' 1;
+  font-feature-settings:'liga' 1;
+  font-variation-settings:"opsz" 14;
   /* laid paper — faint horizontal ruled lines + warm wash + gold bloom top */
   background-image:
     repeating-linear-gradient(0deg,transparent 0 31px,rgba(46,40,29,0.025) 31px 32px),
@@ -580,7 +582,7 @@ a{color:inherit;text-decoration:none}
 }
 .mast .wrap{text-align:center}
 .mast-word{
-  font-family:var(--display);font-weight:900;font-size:46px;line-height:1;color:var(--ink);
+  font-family:var(--display);font-weight:700;font-size:46px;line-height:1;color:var(--ink);
   letter-spacing:0.01em;text-transform:uppercase;
   font-variant-numeric:lining-nums;
 }
@@ -631,7 +633,7 @@ a{color:inherit;text-decoration:none}
   color:var(--ink-60);margin-bottom:28px;text-transform:uppercase;
 }
 .essay h1{
-  font-family:var(--display);font-weight:900;font-size:clamp(54px,7vw,88px);line-height:0.98;
+  font-family:var(--display);font-weight:700;font-size:clamp(54px,7vw,88px);line-height:0.98;
   color:var(--ink);letter-spacing:-0.02em;text-align:center;margin-bottom:18px;
 }
 .essay h1 em{font-style:italic;font-weight:400;color:var(--banker)}
@@ -696,9 +698,9 @@ a{color:inherit;text-decoration:none}
 .p-sep{color:var(--ink-40)}
 .p-dir{font-style:italic;color:var(--ink-60)}
 .p-return{
-  font-family:var(--display);font-weight:900;font-size:48px;line-height:0.9;
+  font-family:var(--display);font-weight:700;font-size:48px;line-height:0.9;
   color:var(--ledger-green);letter-spacing:-0.02em;margin-top:auto;
-  font-variant-numeric:oldstyle-nums tabular-nums;
+  font-variant-numeric:tabular-nums;
 }
 .plate.primary .p-return{font-size:62px}
 .p-return.neg{color:var(--ledger-red)}
@@ -712,7 +714,7 @@ a{color:inherit;text-decoration:none}
 .book-head{text-align:center;margin-bottom:10px}
 .book-eyebrow{font-family:var(--smcp);font-size:11px;letter-spacing:6px;color:var(--banker);margin-bottom:8px;text-transform:uppercase}
 .book-hed{font-family:var(--display);font-weight:400;font-style:italic;font-size:42px;color:var(--ink);letter-spacing:-0.01em;line-height:1.05;margin-bottom:8px}
-.book-hed strong{font-weight:900;font-style:normal}
+.book-hed strong{font-weight:700;font-style:normal}
 .book-sub{font-family:var(--body);font-style:italic;font-size:17px;color:var(--ink-60);max-width:520px;margin:0 auto}
 
 .ledger-tbl{
@@ -725,7 +727,7 @@ a{color:inherit;text-decoration:none}
 }
 .ledger-tbl th.r{text-align:right}
 .ledger-tbl td{padding:18px 14px;border-bottom:1px solid var(--ink-20);vertical-align:middle}
-.ledger-tbl td.r{text-align:right;font-variant-numeric:oldstyle-nums tabular-nums;font-family:var(--display);font-weight:500}
+.ledger-tbl td.r{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--display);font-weight:500}
 .ledger-tbl tr:hover{background:var(--paper-warm)}
 .ledger-tbl tr:hover .l-rank{color:var(--banker)}
 .l-rank{
@@ -751,7 +753,7 @@ a{color:inherit;text-decoration:none}
 }
 .l-dir.long{color:var(--ledger-green)}
 .l-dir.short{color:var(--ledger-red)}
-.l-ret{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-0.01em;font-variant-numeric:oldstyle-nums tabular-nums}
+.l-ret{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:-0.01em;font-variant-numeric:tabular-nums}
 .l-ret.pos{color:var(--ledger-green)}
 .l-ret.neg{color:var(--ledger-red)}
 
@@ -767,7 +769,7 @@ a{color:inherit;text-decoration:none}
 .lm-rank{font-family:var(--display);font-style:italic;font-size:15px;color:var(--ink-60);margin-bottom:4px}
 .lm-name{font-family:var(--display);font-weight:700;font-size:20px;color:var(--ink);letter-spacing:-0.01em;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lm-right{text-align:right}
-.lm-ret{font-family:var(--display);font-weight:900;font-size:28px;letter-spacing:-0.02em;line-height:1;font-variant-numeric:oldstyle-nums tabular-nums}
+.lm-ret{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:-0.02em;line-height:1;font-variant-numeric:tabular-nums}
 .lm-ret.pos{color:var(--ledger-green)}
 .lm-ret.neg{color:var(--ledger-red)}
 .lm-ret-sub{font-family:var(--smcp);font-size:10px;letter-spacing:3px;color:var(--ink-40);margin-top:3px;text-transform:uppercase}
@@ -792,7 +794,7 @@ footer{
   margin-top:40px;padding:30px 0 44px;border-top:3px double var(--ink);
 }
 footer .wrap{text-align:center}
-.colo-word{font-family:var(--display);font-weight:900;font-size:22px;color:var(--ink);letter-spacing:0.04em;text-transform:uppercase;line-height:1}
+.colo-word{font-family:var(--display);font-weight:700;font-size:22px;color:var(--ink);letter-spacing:0.04em;text-transform:uppercase;line-height:1}
 .colo-amp{font-family:var(--display);font-style:italic;font-weight:400;color:var(--gold);font-size:30px;line-height:0.9;margin:2px 0}
 .colo-sub{font-family:var(--display);font-style:italic;color:var(--banker);font-size:17px;margin-bottom:4px}
 .colo-meta{font-family:var(--smcp);font-size:11px;letter-spacing:4px;color:var(--ink-60);margin-top:14px;text-transform:uppercase}

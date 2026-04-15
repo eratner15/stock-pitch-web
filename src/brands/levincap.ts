@@ -23,7 +23,7 @@ export function renderLevinCapLanding(portfolio: PortalEntry[], top: Leaderboard
 <title>Levin Capital Research</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,700;0,6..96,900;1,6..96,400;1,6..96,700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=IM+Fell+English+SC&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -41,15 +41,17 @@ export function renderLevinCapLanding(portfolio: PortalEntry[], top: Leaderboard
   --gold-deep:#8B6F28;
   --ledger-green:#0F3B2E;
   --ledger-red:#8B2A1E;
-  --display:'Bodoni Moda','Didot',Georgia,serif;
-  --body:'Cormorant Garamond','EB Garamond',Georgia,serif;
+  --display:'Fraunces','Source Serif 4',Georgia,serif;
+  --body:'Source Serif 4','Lora',Georgia,serif;
   --smcp:'IM Fell English SC',serif;
 }
 html{background:var(--paper)}
 body{
-  font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.55;font-size:19px;
+  font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.62;font-size:18px;
+  font-weight:450;
   -webkit-font-smoothing:antialiased;
   font-feature-settings:'onum' 1,'liga' 1;
+  font-variation-settings:"opsz" 14;
   background-image:
     repeating-linear-gradient(0deg,transparent 0 31px,rgba(46,40,29,0.022) 31px 32px);
   background-attachment:fixed;
@@ -60,8 +62,8 @@ a{color:inherit;text-decoration:none}
 /* MASTHEAD — compact, centered */
 .mast{padding:24px 0;border-bottom:1px solid var(--ink)}
 .mast .wrap{display:flex;justify-content:space-between;align-items:center;gap:20px}
-.mast-brand{font-family:var(--display);font-weight:900;font-size:22px;line-height:1;letter-spacing:0.03em;text-transform:uppercase;color:var(--ink)}
-.mast-brand em{font-style:italic;font-weight:400;color:var(--banker);text-transform:none;letter-spacing:0.02em;margin-left:4px}
+.mast-brand{font-family:var(--display);font-weight:700;font-size:22px;line-height:1;letter-spacing:0.02em;text-transform:uppercase;color:var(--ink);font-variation-settings:"opsz" 40}
+.mast-brand em{font-style:italic;font-weight:500;color:var(--banker);text-transform:none;letter-spacing:0.01em;margin-left:6px;font-variation-settings:"opsz" 40}
 .mast-nav{display:flex;align-items:center;gap:28px;font-family:var(--smcp);font-size:12px;letter-spacing:4px;text-transform:uppercase;color:var(--ink-60)}
 .mast-nav a{padding:4px 0;border-bottom:2px solid transparent;transition:border 0.2s,color 0.2s}
 .mast-nav a:hover{color:var(--banker);border-bottom-color:var(--gold)}
@@ -69,12 +71,14 @@ a{color:inherit;text-decoration:none}
 /* HERO */
 .hero{padding:80px 0 64px;text-align:center}
 .hero h1{
-  font-family:var(--display);font-weight:900;font-size:clamp(54px,8vw,96px);line-height:0.98;
-  color:var(--ink);letter-spacing:-0.025em;margin-bottom:12px;
+  font-family:var(--display);font-weight:700;font-size:clamp(54px,8vw,92px);line-height:1;
+  color:var(--ink);letter-spacing:-0.02em;margin-bottom:14px;
+  font-variation-settings:"opsz" 144,"SOFT" 50;
 }
-.hero h1 em{font-style:italic;font-weight:400;color:var(--banker)}
+.hero h1 em{font-style:italic;font-weight:500;color:var(--banker);font-variation-settings:"opsz" 144,"SOFT" 60}
 .hero-tag{
-  font-family:var(--body);font-style:italic;font-size:21px;color:var(--ink-60);margin-bottom:40px;max-width:580px;margin-left:auto;margin-right:auto;line-height:1.5;
+  font-family:var(--body);font-style:italic;font-size:20px;color:var(--ink-60);margin-bottom:40px;max-width:560px;margin-left:auto;margin-right:auto;line-height:1.5;
+  font-weight:450;
 }
 .ticker-form{
   display:flex;gap:0;max-width:540px;margin:0 auto 22px;
@@ -85,8 +89,9 @@ a{color:inherit;text-decoration:none}
 .ticker-form:focus-within{box-shadow:inset 0 0 0 1px var(--paper-warm),inset 0 0 0 4px transparent,inset 0 0 0 5px var(--banker)}
 .ticker-form input{
   flex:1;padding:18px 22px;border:none;background:transparent;
-  font-family:var(--display);font-size:26px;font-weight:700;letter-spacing:3px;
+  font-family:var(--display);font-size:26px;font-weight:600;letter-spacing:3px;
   color:var(--ink);text-transform:uppercase;outline:none;min-width:0;
+  font-variation-settings:"opsz" 60;
 }
 .ticker-form input::placeholder{color:var(--ink-40);letter-spacing:3px;font-weight:400;font-style:italic}
 .ticker-form button{
@@ -106,8 +111,8 @@ a{color:inherit;text-decoration:none}
 /* SECTION */
 .section{padding:40px 0 32px;border-top:1px solid var(--ink-20)}
 .section-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;margin-bottom:22px}
-.section-hed{font-family:var(--display);font-weight:400;font-style:italic;font-size:30px;line-height:1;color:var(--ink);letter-spacing:-0.01em}
-.section-hed strong{font-weight:900;font-style:normal}
+.section-hed{font-family:var(--display);font-weight:500;font-style:italic;font-size:30px;line-height:1;color:var(--ink);letter-spacing:-0.01em;font-variation-settings:"opsz" 72}
+.section-hed strong{font-weight:700;font-style:normal;font-variation-settings:"opsz" 72}
 .section-link{font-family:var(--smcp);font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--ink-60);border-bottom:1px solid var(--gold);padding-bottom:3px;transition:color 0.15s}
 .section-link:hover{color:var(--banker)}
 
@@ -120,11 +125,11 @@ a{color:inherit;text-decoration:none}
 }
 .lb-row:last-child{border-bottom:none}
 .lb-row:hover{background:rgba(15,59,46,0.04)}
-.lb-rank{font-family:var(--display);font-style:italic;font-weight:400;font-size:22px;line-height:1;color:var(--ink-40)}
-.lb-analyst{font-family:var(--display);font-size:18px;font-weight:500;color:var(--ink);letter-spacing:-0.01em}
-.lb-analyst .tkr{font-weight:700;color:var(--ink);margin-left:10px;font-size:16px;letter-spacing:1px}
+.lb-rank{font-family:var(--display);font-style:italic;font-weight:500;font-size:22px;line-height:1;color:var(--ink-40);font-variation-settings:"opsz" 48}
+.lb-analyst{font-family:var(--display);font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-0.005em;font-variation-settings:"opsz" 24}
+.lb-analyst .tkr{font-weight:700;color:var(--ink);margin-left:10px;font-size:15px;letter-spacing:1px}
 .lb-dir{font-family:var(--smcp);font-size:10px;letter-spacing:3px;color:var(--ink-40);text-transform:uppercase}
-.lb-ret{font-family:var(--display);font-weight:700;font-size:20px;line-height:1;letter-spacing:-0.01em;min-width:80px;text-align:right;font-variant-numeric:oldstyle-nums tabular-nums}
+.lb-ret{font-family:var(--display);font-weight:600;font-size:20px;line-height:1;letter-spacing:-0.01em;min-width:80px;text-align:right;font-variant-numeric:tabular-nums;font-variation-settings:"opsz" 48}
 .lb-ret.pos{color:var(--ledger-green)}
 .lb-ret.neg{color:var(--ledger-red)}
 
@@ -138,11 +143,11 @@ a{color:inherit;text-decoration:none}
   box-shadow:inset 0 0 0 1px var(--paper-warm),inset 0 0 0 4px transparent,inset 0 0 0 5px var(--gold-deep);
 }
 .report:hover{transform:translateY(-2px)}
-.report-tkr{font-family:var(--display);font-weight:700;font-size:24px;line-height:1;color:var(--ink);letter-spacing:1px;margin-bottom:3px}
-.report-co{font-family:var(--body);font-style:italic;font-size:13px;color:var(--ink-60);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.report-thesis{font-family:var(--body);font-size:15px;line-height:1.55;color:var(--ink-60);margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.report-tkr{font-family:var(--display);font-weight:700;font-size:24px;line-height:1;color:var(--ink);letter-spacing:0.5px;margin-bottom:3px;font-variation-settings:"opsz" 48}
+.report-co{font-family:var(--body);font-style:italic;font-size:14px;color:var(--ink-60);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:450}
+.report-thesis{font-family:var(--body);font-size:15px;line-height:1.55;color:var(--ink-60);margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-weight:450}
 .report-foot{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--ink-20)}
-.report-stat{font-family:var(--display);font-weight:900;font-size:18px;line-height:1;font-variant-numeric:oldstyle-nums}
+.report-stat{font-family:var(--display);font-weight:700;font-size:18px;line-height:1;font-variant-numeric:tabular-nums;font-variation-settings:"opsz" 24}
 .report-stat.pos{color:var(--ledger-green)}
 .report-stat.neg{color:var(--ledger-red)}
 .report-rating{font-family:var(--smcp);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--ink-40)}
@@ -196,8 +201,8 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
 
 <section class="hero">
   <div class="wrap">
-    <h1>Submit a <em>note.</em></h1>
-    <p class="hero-tag">Enter a ticker. The house composes a brief. The Ledger keeps the score, nightly.</p>
+    <h1>Build a <em>pitch.</em></h1>
+    <p class="hero-tag">Enter a ticker. The house composes the research brief. The Ledger keeps the score, nightly.</p>
     <form class="ticker-form" action="/submit" method="get" onsubmit="return sanitizeTicker(event)">
       <input name="ticker" id="heroTicker" placeholder="TICKER" maxlength="8" autocomplete="off" spellcheck="false" autofocus>
       <button type="submit">Compose →</button>
