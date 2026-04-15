@@ -1,0 +1,174 @@
+import { escapeHtml } from '../lib/security';
+
+/**
+ * Shared portal layout — used by index/memo/model/consensus/deck/questions
+ * so the five pages read as one continuous product.
+ */
+
+export interface PortalLayoutInput {
+  ticker: string;
+  company: string;
+  activePage: 'index' | 'memo' | 'model' | 'consensus' | 'deck' | 'questions';
+  price: string;                 // pre-formatted, e.g. "$198.08"
+  asOf: string;                  // pre-formatted, e.g. "2026-04-14"
+  title: string;                 // <title> content
+  pageStyles?: string;           // extra CSS injected into <style>
+  body: string;                  // inner <body> HTML (between nav + footer)
+}
+
+export function portalLayout(input: PortalLayoutInput): string {
+  const { ticker, company, activePage, price, asOf, title, pageStyles, body } = input;
+  const t = escapeHtml(ticker);
+  const c = escapeHtml(company);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="${c} (${t}) — Levin Capital Strategies institutional research portal.">
+<title>${escapeHtml(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Merriweather:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+${PORTAL_CSS}
+${pageStyles || ''}
+</style>
+</head>
+<body>
+
+<nav aria-label="Main navigation">
+  <div class="wrap">
+    <a href="/stock-pitch" class="nav-brand">Levin Capital Strategies</a>
+    <div class="nav-links">
+      <a href="/stock-pitch/${t}" class="${activePage === 'index' ? 'active' : ''}">Overview</a>
+      <a href="/stock-pitch/${t}/memo" class="${activePage === 'memo' ? 'active' : ''}">Memo</a>
+      <a href="/stock-pitch/${t}/model" class="${activePage === 'model' ? 'active' : ''}">Model</a>
+      <a href="/stock-pitch/${t}/consensus" class="${activePage === 'consensus' ? 'active' : ''}">Consensus</a>
+      <a href="/stock-pitch/${t}/deck" class="${activePage === 'deck' ? 'active' : ''}">Deck</a>
+      <a href="/stock-pitch/${t}/questions" class="${activePage === 'questions' ? 'active' : ''}">Questions</a>
+    </div>
+    <div class="nav-right">
+      <span class="nav-ticker">NYSE/NASDAQ: <strong>${t}</strong>${price && price !== '—' ? ` ${escapeHtml(price)}` : ''}${asOf ? ` <span class="as-of">as of ${escapeHtml(asOf)}</span>` : ''}</span>
+    </div>
+  </div>
+</nav>
+
+${body}
+
+<footer>
+  <div class="wrap">
+    <div>© ${new Date().getFullYear()} Levin Capital Strategies</div>
+    <div>
+      <a href="/stock-pitch/${t}">Overview</a> ·
+      <a href="/stock-pitch/${t}/memo">Memo</a> ·
+      <a href="/stock-pitch/${t}/model">Model</a> ·
+      <a href="/stock-pitch/${t}/consensus">Consensus</a> ·
+      <a href="/stock-pitch/${t}/deck">Deck</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>`;
+}
+
+/**
+ * Markdown-to-HTML for AI output snippets. Handles paragraphs, bold/italic,
+ * [Source] tag spans, line breaks. Safe: escapes first, then tags.
+ */
+export function portalMarkdown(md: string, inline = false): string {
+  if (!md) return '';
+  let out = md
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  out = out.replace(/\[([A-Za-z0-9\-\s]+)\]/g, '<span class="source-tag">[$1]</span>');
+  out = out
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|\s)\*([^*]+)\*(\s|$)/g, '$1<em>$2</em>$3');
+  if (inline) return out.trim();
+  return out
+    .split(/\n{2,}/)
+    .map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)
+    .join('\n');
+}
+
+export const PORTAL_CSS = `
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#FFFFFF;--surface:#F8F9FB;--surface-2:#F1F3F6;--navy:#0F1729;
+  --border:#E2E5EB;--border-light:#ECEEF2;
+  --gold:#B8973E;--gold-soft:rgba(184,151,62,0.08);--gold-deep:#8B6F28;
+  --steel:#2C5F7C;--green:#1A7A3A;--red:#C0392B;
+  --text:#2D3748;--text-muted:#6B7280;--heading:#111827;
+}
+html{scroll-behavior:smooth;scroll-padding-top:110px}
+body{font-family:'Merriweather',Georgia,serif;background:var(--bg);color:var(--text);line-height:1.7}
+a{color:inherit;text-decoration:none}
+
+nav[aria-label="Main navigation"]{position:fixed;top:0;left:0;right:0;z-index:100;padding:14px 0;background:rgba(255,255,255,0.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--border-light)}
+nav .wrap{max-width:1120px;margin:0 auto;padding:0 32px;display:flex;justify-content:space-between;align-items:center;gap:20px}
+.nav-brand{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;font-weight:700;white-space:nowrap}
+.nav-links{display:flex;gap:16px;font-family:'Inter',sans-serif}
+.nav-links a{font-size:12px;color:var(--text-muted);font-weight:500;transition:color 0.2s;white-space:nowrap}
+.nav-links a.active,.nav-links a:hover{color:var(--heading)}
+.nav-right{display:flex;align-items:center;gap:16px;font-family:'Inter',sans-serif;font-size:12px;color:var(--text-muted)}
+.nav-ticker strong{color:var(--heading);font-weight:700;margin-left:4px}
+.nav-ticker .as-of{color:var(--text-muted);font-weight:400;margin-left:6px;font-size:11px}
+
+.portal-main{max-width:1120px;margin:0 auto;padding:130px 32px 80px}
+.portal-narrow{max-width:720px;margin:0 auto;padding:130px 32px 80px}
+
+h1{font-family:'Inter',sans-serif;font-size:36px;font-weight:800;color:var(--heading);letter-spacing:-0.02em;line-height:1.2;margin-bottom:14px}
+h2{font-family:'Inter',sans-serif;font-size:24px;font-weight:800;color:var(--heading);margin:36px 0 16px;letter-spacing:-0.02em;scroll-margin-top:110px}
+h3{font-family:'Inter',sans-serif;font-size:15px;font-weight:700;color:var(--heading);text-transform:uppercase;letter-spacing:1px;margin:24px 0 10px}
+
+p{font-size:16px;line-height:1.75;color:var(--text);margin-bottom:18px}
+p strong{color:var(--heading)}
+
+.page-eyebrow{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:12px}
+.page-subtitle{font-family:'Inter',sans-serif;font-size:14px;color:var(--text-muted);font-weight:500;margin-bottom:4px}
+.page-tagline{font-family:'Merriweather',serif;font-style:italic;font-size:18px;color:var(--text);margin-top:14px;line-height:1.55}
+
+.kicker{font-family:'Inter',sans-serif;font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-top:40px;margin-bottom:8px}
+
+.source-tag{display:inline-block;font-family:'Inter',sans-serif;font-size:10px;color:var(--gold);font-weight:600;letter-spacing:0.3px;vertical-align:super;margin-left:2px}
+
+table.data{width:100%;border-collapse:collapse;font-family:'Inter',sans-serif;font-size:13px;margin:18px 0 28px}
+table.data th{text-align:left;padding:10px 12px;border-bottom:2px solid var(--border);font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:700}
+table.data td{padding:12px;border-bottom:1px solid var(--border-light);color:var(--text)}
+table.data td.r,table.data th.r{text-align:right;font-variant-numeric:tabular-nums}
+table.data tr:hover td{background:var(--surface)}
+table.data td strong{color:var(--heading)}
+
+.bluf{background:var(--gold-soft);border-left:3px solid var(--gold);padding:18px 22px;margin:24px 0 28px;font-family:'Merriweather',serif;font-size:16px;line-height:1.65;color:var(--heading)}
+.bluf strong{font-weight:700}
+
+.meta-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:24px;border-top:1px solid var(--border-light);border-bottom:1px solid var(--border-light);font-family:'Inter',sans-serif}
+.meta-strip .cell{padding:14px 0;border-right:1px solid var(--border-light)}
+.meta-strip .cell:last-child{border-right:none}
+.meta-strip .lbl{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted);font-weight:600}
+.meta-strip .val{font-size:20px;font-weight:700;color:var(--heading);margin-top:4px}
+.meta-strip .val.pos{color:var(--green)}
+.meta-strip .val.neg{color:var(--red)}
+.meta-strip .val.gold{color:var(--gold-deep)}
+
+.disclaimer{background:var(--surface);border-left:3px solid var(--text-muted);padding:14px 18px;margin:32px 0 0;font-family:'Inter',sans-serif;font-size:12px;color:var(--text-muted);line-height:1.6}
+.disclaimer a{color:var(--gold);border-bottom:1px dotted var(--gold);font-weight:600}
+
+footer{border-top:1px solid var(--border-light);padding:32px 0 48px;font-family:'Inter',sans-serif;font-size:12px;color:var(--text-muted);margin-top:48px}
+footer .wrap{max-width:1120px;margin:0 auto;padding:0 32px;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+footer a{color:var(--text-muted);border-bottom:1px solid var(--border)}
+
+@media(max-width:820px){
+  nav .wrap{padding:0 20px;gap:10px}
+  .nav-links{display:none}
+  .nav-right{font-size:11px}
+  .portal-main,.portal-narrow{padding:100px 20px 60px}
+  h1{font-size:26px}
+  h2{font-size:20px}
+  .meta-strip{grid-template-columns:1fr 1fr}
+  .meta-strip .cell:nth-child(even){border-right:none}
+  .meta-strip .cell:nth-last-child(-n+2){border-top:1px solid var(--border-light)}
+}
+`;

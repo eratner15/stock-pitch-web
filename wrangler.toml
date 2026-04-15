@@ -17,6 +17,14 @@ routes = [
 ]
 workers_dev = true
 
+# Portal generation via waitUntil needs extended wall-clock budget.
+# 5 minutes gives us room for Workers AI calls + EDGAR fetches.
+[placement]
+mode = "smart"
+
+[limits]
+cpu_ms = 300000
+
 [vars]
 ENVIRONMENT = "production"
 

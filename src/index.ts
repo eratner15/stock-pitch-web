@@ -1019,10 +1019,13 @@ app.post('/stock-pitch/generate', async (c) => {
   const ticker = sanitizeTicker(String(body.ticker || ''));
   if (!ticker) return c.json({ error: 'Valid ticker required' }, 400);
 
-  // Rate limit — portals are expensive, cap at 5/hour per IP
+  // Rate limit — portals cap at 30/hour per IP. ADMIN_KEY header bypasses.
   const ip = c.req.header('cf-connecting-ip') || 'unknown';
-  const limit = await checkRateLimit(c.env.REQUESTS, `portal:ip:${ip}`, 5, 3600);
-  if (!limit.allowed) return c.json({ error: 'Too many portal generations from this network. Try again in an hour.' }, 429);
+  const isAdmin = c.env.ADMIN_KEY && c.req.header('x-admin-key') === c.env.ADMIN_KEY;
+  if (!isAdmin) {
+    const limit = await checkRateLimit(c.env.REQUESTS, `portal:ip:${ip}`, 30, 3600);
+    if (!limit.allowed) return c.json({ error: 'Too many portal generations from this network. Try again in an hour.' }, 429);
+  }
 
   // Lock entry price at submit time
   const { fetchPriceStrict } = await import('./lib/prices');
@@ -1051,10 +1054,17 @@ app.post('/stock-pitch/generate', async (c) => {
     return c.json({ error: 'Could not queue job' }, 500);
   }
 
-  // Kick off generation in background (waitUntil — returns before gen finishes)
-  c.executionCtx.waitUntil(generatePortal(c.env, jobId, ticker, quote));
+  // SYNCHRONOUS generation — block the HTTP request until done. Cloudflare
+  // Workers' waitUntil was being cancelled before generation finished, so
+  // we run inline. Typical generation is 40-90s; browsers will wait.
+  try {
+    await generatePortal(c.env, jobId, ticker, quote);
+  } catch (err) {
+    console.error('[portal] inline generation failed', err);
+    return c.json({ error: 'Generation failed: ' + String(err).slice(0, 200) }, 500);
+  }
 
-  return c.json({ ok: true, jobId, redirect: `/stock-pitch/jobs/${jobId}` });
+  return c.json({ ok: true, jobId, ticker, redirect: `/stock-pitch/${ticker}` });
 });
 
 app.get('/stock-pitch/jobs/:jobId', async (c) => {
@@ -1086,13 +1096,18 @@ app.get('/api/portal/jobs/:jobId', async (c) => {
   return c.json(job);
 });
 
-app.get('/stock-pitch/:ticker/memo', async (c) => {
-  const ticker = sanitizeTicker(c.req.param('ticker'));
-  if (!ticker) return c.text('Invalid ticker', 400);
-  const html = await c.env.REQUESTS.get(`portal:${ticker}:memo`);
-  if (!html) return c.text(`No portal for ${ticker} — generate one at /stock-pitch`, 404);
-  return c.html(html);
-});
+// Portal page serving — all 5 pages pull from KV after generation
+const PORTAL_PAGES = ['index', 'memo', 'model', 'consensus', 'deck', 'questions'] as const;
+for (const page of PORTAL_PAGES) {
+  const path = page === 'index' ? '/stock-pitch/:ticker' : `/stock-pitch/:ticker/${page}`;
+  app.get(path, async (c) => {
+    const ticker = sanitizeTicker(c.req.param('ticker'));
+    if (!ticker) return c.text('Invalid ticker', 400);
+    const html = await c.env.REQUESTS.get(`portal:${ticker}:${page}`);
+    if (!html) return c.text(`No portal for ${ticker} — generate one at /stock-pitch`, 404);
+    return c.html(html);
+  });
+}
 
 app.notFound((c) => c.text('Not Found', 404));
 
@@ -1138,33 +1153,62 @@ async function generatePortal(env: Env, jobId: string, ticker: string, quote: { 
   try {
     const { collectResearch, writePortalContent } = await import('./lib/portal-generator');
     const { renderPortalMemo } = await import('./pages/portal-memo');
-
+    const {
+      renderPortalIndex,
+      renderPortalModel,
+      renderPortalConsensus,
+      renderPortalDeck,
+      renderPortalQuestions,
+    } = await import('./pages/portal-pages');
     await setStep('researching', 'Fetching 10-K + 10-Q from EDGAR', 0);
     const research = await collectResearch({ ticker });
     if (!research.filing_10k_url) {
       return fail(`Could not locate SEC 10-K for ${ticker}. EDGAR may not have this ticker, or it's foreign-listed. Try another symbol.`);
     }
 
-    await setStep('writing', 'Forming thesis · drafting memo sections', 1);
+    await setStep('writing', 'Forming thesis · drafting all 6 sections', 1);
     const content = await writePortalContent(env.AI, research);
 
-    await setStep('writing', 'Assembling memo HTML', 3);
-    const memoHtml = renderPortalMemo({
+    // Fetch peer prices in parallel for the consensus page
+    await setStep('writing', 'Pricing peer comps', 2);
+    const peerTickers = Array.from(new Set(content.consensus.peerTickers));
+    const peerResults = await Promise.all(peerTickers.map(t => fetchPrice(t)));
+    const peerQuotes: Record<string, typeof peerResults[number]> = {};
+    peerTickers.forEach((t, i) => { peerQuotes[t] = peerResults[i]; });
+
+    await setStep('writing', 'Assembling 5 pages', 3);
+    const now = new Date().toISOString();
+    const common = {
       ticker: research.ticker,
       company: research.company,
       content,
       quote: research.quote,
       filing_10k_url: research.filing_10k_url,
       filing_10k_date: research.filing_10k_date,
-      generated_at: new Date().toISOString(),
-    });
+      generated_at: now,
+    };
 
-    await env.REQUESTS.put(`portal:${research.ticker}:memo`, memoHtml, { expirationTtl: 60 * 60 * 24 * 90 });
-    await env.REQUESTS.put(`portal:${research.ticker}:content`, JSON.stringify(content), { expirationTtl: 60 * 60 * 24 * 90 });
+    const pages: Record<string, string> = {
+      index: renderPortalIndex(common),
+      memo: renderPortalMemo(common),
+      model: renderPortalModel(common),
+      consensus: renderPortalConsensus({ ...common, peerQuotes }),
+      deck: renderPortalDeck(common),
+      questions: renderPortalQuestions(common),
+    };
 
-    await setStep('complete', 'Portal ready', 5);
+    await setStep('writing', 'Persisting pages to KV', 5);
+    const ttl = 60 * 60 * 24 * 90; // 90 days
+    await Promise.all([
+      ...Object.entries(pages).map(([page, html]) =>
+        env.REQUESTS.put(`portal:${research.ticker}:${page}`, html, { expirationTtl: ttl })
+      ),
+      env.REQUESTS.put(`portal:${research.ticker}:content`, JSON.stringify(content), { expirationTtl: ttl }),
+    ]);
+
+    await setStep('complete', 'Portal ready', 6);
     await env.DB.prepare(
-      `UPDATE portal_jobs SET status='complete', step=?, pages_complete=5, completed_at=datetime('now') WHERE id=?`
+      `UPDATE portal_jobs SET status='complete', step=?, pages_complete=6, pages_total=6, completed_at=datetime('now') WHERE id=?`
     ).bind('Portal ready', jobId).run();
   } catch (err) {
     console.error('[portal] generation failed', err);

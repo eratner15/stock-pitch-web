@@ -58,7 +58,7 @@ export interface FilingInfo {
  */
 export async function getRecentFilings(
   ticker: string,
-  limit = 8
+  limit = 40
 ): Promise<FilingInfo[]> {
   const entry = await getCik(ticker);
   if (!entry) return [];
@@ -168,10 +168,24 @@ function stripFilingHtml(html: string): string {
  */
 export function extractMDA(text: string): string {
   const lower = text.toLowerCase();
-  const start = lower.search(/item\s*7[\.\s]*management[' ]?s discussion/);
-  if (start < 0) return '';
+  // Try several variants — filings use different apostrophes and spacing
+  const patterns = [
+    /item\s*7[\.\s\-—]*management[''\s]*s? discussion/,
+    /management[''\s]*s? discussion and analysis/,
+    /management[''\s]*s? discussion of/,
+  ];
+  let start = -1;
+  for (const p of patterns) {
+    const m = lower.search(p);
+    if (m >= 0) { start = m; break; }
+  }
+  if (start < 0) {
+    // Last resort: take the middle of the document (often contains business review)
+    const mid = Math.floor(text.length / 3);
+    return text.slice(mid, mid + 60000);
+  }
   const tail = text.slice(start);
-  const endRel = tail.toLowerCase().search(/item\s*7a[\.\s]*quantitative/);
+  const endRel = tail.toLowerCase().search(/item\s*7a[\.\s\-—]*quantitative|item\s*8[\.\s\-—]*financial statements/);
   if (endRel < 0) return tail.slice(0, 80000);
   return tail.slice(0, endRel).slice(0, 80000);
 }
@@ -181,17 +195,27 @@ export function extractMDA(text: string): string {
  */
 export function extractRiskFactors(text: string): string {
   const lower = text.toLowerCase();
-  const start = lower.search(/item\s*1a[\.\s]*risk factors/);
+  const patterns = [
+    /item\s*1a[\.\s\-—]*risk factors/,
+    /risk factors[\s\n]/,
+  ];
+  let start = -1;
+  for (const p of patterns) {
+    const m = lower.search(p);
+    if (m >= 0) { start = m; break; }
+  }
   if (start < 0) return '';
   const tail = text.slice(start);
-  const endRel = tail.toLowerCase().search(/item\s*1b[\.\s]*/);
+  const endRel = tail.toLowerCase().search(/item\s*1b|item\s*2[\.\s\-—]*properties|unresolved staff/);
   if (endRel < 0) return tail.slice(0, 60000);
   return tail.slice(0, endRel).slice(0, 60000);
 }
 
 /**
  * Convenience: fetch the latest 10-K and pull MD&A + Risk Factors. Used as
- * the primary grounding for the portal memo + risks sections.
+ * the primary grounding for the portal memo + risks sections. We look at
+ * the 40 most recent filings because active companies push 8-Ks regularly
+ * and the last 10-K can easily be >10 filings back.
  */
 export async function fetchLatest10K(ticker: string): Promise<{
   filing: FilingInfo | null;
@@ -199,7 +223,7 @@ export async function fetchLatest10K(ticker: string): Promise<{
   risks: string;
   rawText: string;
 }> {
-  const filings = await getRecentFilings(ticker, 10);
+  const filings = await getRecentFilings(ticker, 40);
   const latest10K = filings.find(f => f.form === '10-K') ?? filings.find(f => f.form === '20-F');
   if (!latest10K) return { filing: null, mda: '', risks: '', rawText: '' };
 
@@ -216,7 +240,7 @@ export async function fetchLatest10Q(ticker: string): Promise<{
   filing: FilingInfo | null;
   text: string;
 }> {
-  const filings = await getRecentFilings(ticker, 10);
+  const filings = await getRecentFilings(ticker, 40);
   const latest10Q = filings.find(f => f.form === '10-Q');
   if (!latest10Q) return { filing: null, text: '' };
   const text = await fetchFilingText(latest10Q.documentUrl);
