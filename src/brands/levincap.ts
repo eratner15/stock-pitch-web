@@ -120,8 +120,8 @@ a{color:inherit;text-decoration:none}
 }
 .kpi{padding:20px 18px;border-right:1px solid var(--ink-20);text-align:center}
 .kpi:last-child{border-right:none}
-.kpi-v{font-family:var(--display);font-weight:900;font-size:38px;line-height:0.95;color:var(--ink);letter-spacing:-0.01em;font-variant-numeric:oldstyle-nums}
-.kpi-v em{font-style:italic;font-weight:400;color:var(--banker)}
+.kpi-v{font-family:var(--display);font-weight:900;font-size:32px;line-height:0.95;color:var(--ink);letter-spacing:-0.01em;font-variant-numeric:oldstyle-nums}
+.kpi-v em{font-style:italic;font-weight:400;color:var(--banker-deep)}
 .kpi-l{font-family:var(--smcp);font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--ink-60);margin-top:8px}
 
 /* SECTION SHARED ---------------------------------------------------------- */
@@ -272,9 +272,9 @@ footer .wrap{text-align:center}
     </div>
     <div class="kpis">
       <div class="kpi"><div class="kpi-v">${portfolio.length}</div><div class="kpi-l">Live portals</div></div>
-      <div class="kpi"><div class="kpi-v">48<em>hr</em></div><div class="kpi-l">Brief turnaround</div></div>
-      <div class="kpi"><div class="kpi-v">I.</div><div class="kpi-l">First note is free</div></div>
-      <div class="kpi"><div class="kpi-v">∞</div><div class="kpi-l">No votes, no bias</div></div>
+      <div class="kpi"><div class="kpi-v">~2<em>min</em></div><div class="kpi-l">Brief composed</div></div>
+      <div class="kpi"><div class="kpi-v"><em>No fee</em></div><div class="kpi-l">First note</div></div>
+      <div class="kpi"><div class="kpi-v"><em>Nightly</em></div><div class="kpi-l">Market settles</div></div>
     </div>
   </div>
 </section>
@@ -358,6 +358,8 @@ footer .wrap{text-align:center}
 }
 
 function renderPortal(p: PortalEntry, compact: boolean): string {
+  const isNeg = p.headline_stat.trim().startsWith('-');
+  const statColor = isNeg ? 'color:var(--ledger-red)' : 'color:var(--ledger-green)';
   return `<a href="${p.url}" class="portal ${compact ? 'compact' : ''}" target="_blank" rel="noopener">
     <div class="portal-ticker">${p.ticker}</div>
     <div class="portal-co">${p.company}</div>
@@ -365,7 +367,7 @@ function renderPortal(p: PortalEntry, compact: boolean): string {
     <div class="portal-thesis">${p.thesis}</div>
     <div class="portal-foot">
       <div>
-        <div class="portal-stat">${p.headline_stat}</div>
+        <div class="portal-stat" style="${statColor}">${p.headline_stat}</div>
         <div class="portal-stat-l">${p.headline_label}</div>
       </div>
       <div class="portal-rating ${p.rating_class}">${p.rating}</div>

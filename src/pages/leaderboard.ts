@@ -29,7 +29,9 @@ export function renderLeaderboard(rows: LeaderboardRow[], brand: 'stockpitch' | 
 
 function renderStockpitchLeaderboard(rows: LeaderboardRow[]): string {
   const topRows = rows.slice(0, 3);
-  const restRows = rows.slice(3);
+  // Show ALL rows in the table so small-data demos still see a full list.
+  // Podium above highlights top 3; table shows everything ordered by rank.
+  const tableRows = rows;
   const tape = buildTicker(rows);
 
   return `<!DOCTYPE html>
@@ -403,7 +405,7 @@ ${topRows.length >= 3 ? `
           </tr>
         </thead>
         <tbody>
-          ${restRows.map(r => renderSpRow(r)).join('')}
+          ${tableRows.map(r => renderSpRow(r)).join('')}
         </tbody>
       </table>
       <div class="mobile-cards">
@@ -513,7 +515,8 @@ function buildTicker(rows: LeaderboardRow[]): string {
 
 function renderLevincapLeaderboard(rows: LeaderboardRow[]): string {
   const topRows = rows.slice(0, 3);
-  const restRows = rows.slice(3);
+  // Show ALL rows in the ledger so small-data demos still see the full book.
+  const tableRows = rows;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -912,7 +915,7 @@ ${topRows.length >= 3 ? `
           </tr>
         </thead>
         <tbody>
-          ${restRows.map(r => renderLcRow(r)).join('')}
+          ${tableRows.map(r => renderLcRow(r)).join('')}
         </tbody>
       </table>
       <div class="mc-stack">

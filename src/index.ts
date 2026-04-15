@@ -1038,6 +1038,10 @@ async function buildLeaderboard(env: Env, brand: Brand): Promise<LeaderboardRow[
       };
     })
     .filter((r): r is Exclude<typeof r, null> => r !== null)
+    // Hide only calls with literal 0% return (price fetch failure where
+    // current_price == entry_price exactly). Fresh calls with tiny movement
+    // stay visible so users see their submission immediately.
+    .filter(r => r.current_price !== r.entry_price)
     .sort((a, b) => b.return_pct - a.return_pct);
 
   return withPerf.map((r, i) => {

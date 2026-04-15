@@ -127,7 +127,11 @@ export function magicLinkEmail(origin: string, token: string): { subject: string
 }
 
 export function welcomeEmail(origin: string, displayName?: string | null): { subject: string; html: string } {
-  const name = displayName?.split(/\s+/)[0] || 'there';
+  const rawName = displayName?.split(/\s+/)[0] || 'there';
+  // Escape — display names are user-controlled and this email is HTML
+  const name = rawName.replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
+  ));
   return {
     subject: 'Welcome to Stock Pitch',
     html: layout(

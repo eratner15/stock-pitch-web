@@ -214,7 +214,7 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
 
 <section class="hero">
   <div class="wrap">
-    <div class="hero-kicker">★ Open to all members ★</div>
+    <div class="hero-kicker">★ First call is free ★</div>
     <h1>Pitch a stock. <em>The market</em> keeps score.</h1>
     <p class="hero-deck">Submit your thesis at today's close. An AI writes the research brief. Every call sits on the leaderboard, tracked nightly, ranked by return since entry.</p>
     <div class="hero-ctas">
@@ -223,9 +223,9 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
     </div>
     <div class="kpis">
       <div class="kpi"><div class="kpi-v">${portfolio.length}</div><div class="kpi-l">Live portals</div></div>
-      <div class="kpi"><div class="kpi-v">48<span class="unit">hr</span></div><div class="kpi-l">Brief turnaround</div></div>
-      <div class="kpi"><div class="kpi-v">1<span class="unit">st</span></div><div class="kpi-l">Call is free</div></div>
-      <div class="kpi"><div class="kpi-v">∞</div><div class="kpi-l">No votes, no bias</div></div>
+      <div class="kpi"><div class="kpi-v">~2<span class="unit">min</span></div><div class="kpi-l">AI brief ready</div></div>
+      <div class="kpi"><div class="kpi-v">Free</div><div class="kpi-l">First call</div></div>
+      <div class="kpi"><div class="kpi-v">Nightly</div><div class="kpi-l">Rebalance cadence</div></div>
     </div>
   </div>
 </section>
@@ -295,6 +295,8 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
 }
 
 function renderPortal(p: PortalEntry, compact: boolean): string {
+  const isNeg = p.headline_stat.trim().startsWith('-');
+  const statColor = isNeg ? 'color:var(--bear)' : 'color:var(--bull)';
   return `<a href="${p.url}" class="portal ${compact ? 'compact' : ''}" target="_blank" rel="noopener">
     <div class="portal-ticker">${p.ticker}</div>
     <div class="portal-co">${p.company}</div>
@@ -302,7 +304,7 @@ function renderPortal(p: PortalEntry, compact: boolean): string {
     <div class="portal-thesis">${p.thesis}</div>
     <div class="portal-foot">
       <div>
-        <div class="portal-stat">${p.headline_stat}</div>
+        <div class="portal-stat" style="${statColor}">${p.headline_stat}</div>
         <div class="portal-stat-l">${p.headline_label}</div>
       </div>
       <div class="portal-rating ${p.rating_class}">${p.rating}</div>
