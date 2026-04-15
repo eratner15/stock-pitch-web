@@ -1019,11 +1019,11 @@ app.post('/generate', async (c) => {
   const ticker = sanitizeTicker(String(body.ticker || ''));
   if (!ticker) return c.json({ error: 'Valid ticker required' }, 400);
 
-  // Rate limit — portals cap at 30/hour per IP. ADMIN_KEY header bypasses.
+  // Rate limit — portals cap at 100/hour per IP. ADMIN_KEY header bypasses.
   const ip = c.req.header('cf-connecting-ip') || 'unknown';
   const isAdmin = c.env.ADMIN_KEY && c.req.header('x-admin-key') === c.env.ADMIN_KEY;
   if (!isAdmin) {
-    const limit = await checkRateLimit(c.env.REQUESTS, `portal:ip:${ip}`, 30, 3600);
+    const limit = await checkRateLimit(c.env.REQUESTS, `portal:ip:${ip}`, 100, 3600);
     if (!limit.allowed) return c.json({ error: 'Too many portal generations from this network. Try again in an hour.' }, 429);
   }
 

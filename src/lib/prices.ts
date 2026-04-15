@@ -30,7 +30,13 @@ export interface PriceQuote {
  */
 export async function fetchPrice(ticker: string, _fmpKey?: string): Promise<PriceQuote | null> {
   const t = ticker.toUpperCase().trim();
-  return await fetchFromYahoo(t);
+  // Yahoo uses hyphens for share-class (BRK-B), SEC uses dots (BRK.B).
+  // Try the original, then swap.
+  const primary = await fetchFromYahoo(t);
+  if (primary) return primary;
+  if (t.includes('.')) return await fetchFromYahoo(t.replace(/\./g, '-'));
+  if (t.includes('-')) return await fetchFromYahoo(t.replace(/-/g, '.'));
+  return null;
 }
 
 /**
@@ -45,8 +51,8 @@ export async function fetchPriceStrict(
   ticker: string,
   _opts?: { allowDemoFallback?: boolean }
 ): Promise<PriceQuote | null> {
-  const t = ticker.toUpperCase().trim();
-  return await fetchFromYahoo(t);
+  // Reuse fetchPrice which handles BRK.B ↔ BRK-B normalization.
+  return await fetchPrice(ticker);
 }
 
 /**

@@ -57,6 +57,7 @@ export function renderPortalMemo(input: PortalMemoInput): string {
     <li><a href="#support-1">${escapeHtml(content.supportingPoint1.heading)}</a></li>
     <li><a href="#support-2">${escapeHtml(content.supportingPoint2.heading)}</a></li>
     <li><a href="#support-3">${escapeHtml(content.supportingPoint3.heading)}</a></li>
+    <li><a href="#competitive">${escapeHtml(content.competitiveSection.heading)}</a></li>
     <li><a href="#bridge">The Revenue &amp; Earnings Bridge</a></li>
     <li><a href="#sotp">${escapeHtml(content.sotpSection.heading)}</a></li>
     <li><a href="#mgmt">${escapeHtml(content.mgmtSection.heading)}</a></li>
@@ -105,25 +106,31 @@ export function renderPortalMemo(input: PortalMemoInput): string {
 </section>
 
 <section>
-  <div class="kicker">§ V — The Bridge</div>
+  <div class="kicker">§ V — Competitive Landscape</div>
+  <h2 id="competitive">${escapeHtml(content.competitiveSection.heading)}</h2>
+  ${sideAnnotated(content.competitiveSection.body, sidenotes, 16, 18)}
+</section>
+
+<section>
+  <div class="kicker">§ VI — The Bridge</div>
   <h2 id="bridge">The revenue &amp; earnings bridge</h2>
   ${sideAnnotated(content.financialBridge, sidenotes, 16, 17)}
 </section>
 
 <section>
-  <div class="kicker">§ VI — Sum of Parts</div>
+  <div class="kicker">§ VII — Sum of Parts</div>
   <h2 id="sotp">${escapeHtml(content.sotpSection.heading)}</h2>
   ${sideAnnotated(content.sotpSection.body, sidenotes, 17, 19)}
 </section>
 
 <section>
-  <div class="kicker">§ VII — Stewardship</div>
+  <div class="kicker">§ VIII — Stewardship</div>
   <h2 id="mgmt">${escapeHtml(content.mgmtSection.heading)}</h2>
   ${sideAnnotated(content.mgmtSection.body, sidenotes, 19, 20)}
 </section>
 
 <section>
-  <div class="kicker">§ VIII — Bulls and Bears</div>
+  <div class="kicker">§ IX — Bulls and Bears</div>
   <h2>The case in brief</h2>
   <div class="bull-bear">
     <div class="bb-card bull">
@@ -138,32 +145,32 @@ export function renderPortalMemo(input: PortalMemoInput): string {
 </section>
 
 <section>
-  <div class="kicker">§ IX — Risks</div>
+  <div class="kicker">§ X — Risks</div>
   <h2 id="risks">What could derail the thesis</h2>
   ${sideAnnotated(content.keyRisks, sidenotes, 14, 16)}
 </section>
 
 <section>
-  <div class="kicker">§ X — Valuation</div>
+  <div class="kicker">§ XI — Valuation</div>
   <h2 id="valuation">How we frame value</h2>
   ${sideAnnotated(content.valuationSection, sidenotes, 16, 18)}
 </section>
 
 <section>
-  <div class="kicker">§ XI — Recommendation</div>
+  <div class="kicker">§ XII — Recommendation</div>
   <h2 id="price-target">Price target and scenario analysis</h2>
   ${sideAnnotated(content.priceTargetSection, sidenotes, 18, 19)}
 </section>
 
 <section>
-  <div class="kicker">§ XII — Catalysts</div>
+  <div class="kicker">§ XIII — Catalysts</div>
   <h2 id="catalysts">Path to value — 12-24 months</h2>
   ${sideAnnotated(content.catalystsSection, sidenotes, 19, 20)}
 </section>
 
 ${content.diligenceQuestions.length > 0 ? `
 <section>
-  <div class="kicker">§ XIII — Diligence Toolkit</div>
+  <div class="kicker">§ XIV — Diligence Toolkit</div>
   <h2 id="diligence">Questions for Management</h2>
   <div class="diligence">
     ${content.diligenceQuestions.map(d => `
