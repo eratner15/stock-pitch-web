@@ -1,6 +1,6 @@
 name = "stock-pitch-web"
 main = "src/index.ts"
-compatibility_date = "2024-09-23"
+compatibility_date = "2026-04-15"
 compatibility_flags = ["nodejs_compat"]
 
 # Public mount: research.levincap.com is pure research content (lcs-portfolio-intel).
@@ -37,13 +37,22 @@ binding = "DB"
 database_name = "stock-pitch-db"
 database_id = "ec74e895-3984-4d1b-ba35-5111a7d3fcef"
 
-# Native Cloudflare Workers AI — for free-tier Gemma generation
+# Native Cloudflare Workers AI
 [ai]
 binding = "AI"
 
 # Browser Rendering — for auto-generated OG share card PNGs
 [browser]
 binding = "BROWSER"
+
+# Research Agent — Think-based Durable Object
+[[durable_objects.bindings]]
+class_name = "ResearchAgent"
+name = "ResearchAgent"
+
+[[migrations]]
+new_sqlite_classes = ["ResearchAgent"]
+tag = "v1"
 
 # Cron: nightly price refresh + batch queue processing every 3 min
 [triggers]

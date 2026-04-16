@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import { routeAgentRequest } from 'agents';
+export { ResearchAgent } from './agents/research-agent';
 import puppeteer from '@cloudflare/puppeteer';
 import { renderStockPitchLanding } from './brands/stockpitch';
 import { renderLevinCapLanding } from './brands/levincap';
@@ -50,6 +52,7 @@ interface Env {
   REQUESTS: KVNamespace;
   AI: any;
   BROWSER: Fetcher;
+  ResearchAgent: DurableObjectNamespace;
   ADMIN_KEY?: string;
   FMP_API_KEY?: string;
   SESSION_SECRET?: string;
@@ -136,6 +139,28 @@ app.get('/research', async (c) => {
   if (!ticker) return c.redirect('/');
   const { renderResearchPage } = await import('./pages/research');
   return c.html(renderResearchPage(c.get('brand'), ticker));
+});
+
+// ==========================================================================
+// AGENT — invoke the Think-based Research Agent for a ticker
+// ==========================================================================
+app.post('/api/agent/research', async (c) => {
+  const body = await c.req.json().catch(() => ({} as any));
+  const ticker = sanitizeTicker(String(body.ticker || ''));
+  if (!ticker) return c.json({ error: 'ticker required' }, 400);
+
+  const agentId = ticker;
+    const wsUrl = `wss://${new URL(c.req.url).host}/agents/ResearchAgent/${agentId}`;
+    const httpUrl = `https://${new URL(c.req.url).host}/agents/ResearchAgent/${agentId}`;
+
+    return c.json({
+      ok: true,
+      ticker,
+      agent_id: agentId,
+      websocket_url: wsUrl,
+      http_url: httpUrl,
+      instructions: 'Connect via WebSocket to interact with the Research Agent. Send a message like: "Research META and produce a full investment memo."',
+    });
 });
 
 // ==========================================================================
@@ -1620,6 +1645,22 @@ try{Object.defineProperty(location,'href',{
 })();</script>`;
 
 async function mountedFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // Route agent WebSocket + API requests before Hono
+  const reqUrl = new URL(request.url);
+  if (reqUrl.pathname.startsWith('/agents/')) {
+    console.log(`[agent-route] path=${reqUrl.pathname} upgrade=${request.headers.get('upgrade')} method=${request.method}`);
+    try {
+      const agentResp = await routeAgentRequest(request, env);
+      if (agentResp) {
+        console.log(`[agent-route] returned ${agentResp.status}`);
+        return agentResp;
+      }
+    } catch (e) {
+      console.error('[agent-route] threw:', e);
+      return new Response('Agent routing error: ' + String(e), { status: 500 });
+    }
+  }
+
   const url = new URL(request.url);
   if (!isMounted(url)) return app.fetch(request, env, ctx);
 
