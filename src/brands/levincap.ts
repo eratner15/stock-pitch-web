@@ -194,8 +194,8 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
   <div class="wrap">
     <a href="/" class="mast-brand">Levin Capital <em>Research</em></a>
     <nav class="mast-nav">
+      <a href="/library">Research Desk</a>
       <a href="/leaderboard">The Ledger</a>
-      <a href="/p/top10">Top Ten</a>
     </nav>
   </div>
 </header>
@@ -204,7 +204,7 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
   <div class="wrap">
     <h1>Build a <em>pitch.</em></h1>
     <p class="hero-tag">Enter a ticker. The house composes the research brief. The Ledger keeps the score, nightly.</p>
-    <form class="ticker-form" action="/submit" method="get" onsubmit="return sanitizeTicker(event)">
+    <form class="ticker-form" action="/research" method="get" onsubmit="return sanitizeTicker(event)">
       <input name="ticker" id="heroTicker" placeholder="TICKER" maxlength="8" autocomplete="off" spellcheck="false" autofocus>
       <button type="submit">Compose →</button>
     </form>

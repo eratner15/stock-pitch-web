@@ -129,7 +129,17 @@ app.get('/', async (c) => {
 });
 
 // ==========================================================================
-// SUBMIT — progressive step-based flow
+// RESEARCH — the infinite research desk entry point
+// ==========================================================================
+app.get('/research', async (c) => {
+  const ticker = (c.req.query('ticker') || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 8);
+  if (!ticker) return c.redirect('/');
+  const { renderResearchPage } = await import('./pages/research');
+  return c.html(renderResearchPage(c.get('brand'), ticker));
+});
+
+// ==========================================================================
+// SUBMIT — legacy progressive step-based flow (kept for backward compat)
 // ==========================================================================
 app.get('/submit', (c) => {
   const ticker = (c.req.query('ticker') || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 8);
@@ -137,8 +147,33 @@ app.get('/submit', (c) => {
 });
 
 // ==========================================================================
-// LEADERBOARD
+// RESEARCH LIBRARY — replaces the old leaderboard
 // ==========================================================================
+app.get('/library', async (c) => {
+  const brand = c.get('brand');
+  const { renderLibrary } = await import('./pages/library');
+  type PR = import('./pages/library').PortalRow;
+  type BS = import('./pages/library').BookSummary;
+
+  const portals = await c.env.DB.prepare(
+    'SELECT ticker, company, sector, direction, rating, price_at_generation, price_target, upside_pct, confidence_index, summary, generated_at FROM portals ORDER BY confidence_index DESC'
+  ).all<PR>();
+
+  const longPositions = await c.env.DB.prepare(
+    'SELECT ticker, weight_pct, confidence_index, price_target FROM book_positions WHERE book = ? ORDER BY weight_pct DESC'
+  ).bind('long').all<{ ticker: string; weight_pct: number; confidence_index: number; price_target: number | null }>();
+
+  const shortPositions = await c.env.DB.prepare(
+    'SELECT ticker, weight_pct, confidence_index, price_target FROM book_positions WHERE book = ? ORDER BY weight_pct DESC'
+  ).bind('short').all<{ ticker: string; weight_pct: number; confidence_index: number; price_target: number | null }>();
+
+  const longBook: BS = { book: 'long', positions: longPositions.results ?? [] };
+  const shortBook: BS = { book: 'short', positions: shortPositions.results ?? [] };
+
+  return c.html(renderLibrary(brand, portals.results ?? [], longBook, shortBook));
+});
+
+// Legacy leaderboard — redirect to library
 app.get('/leaderboard', async (c) => {
   const brand = c.get('brand');
   try {
@@ -1054,9 +1089,7 @@ app.post('/generate', async (c) => {
     return c.json({ error: 'Could not queue job' }, 500);
   }
 
-  // SYNCHRONOUS generation — block the HTTP request until done. Cloudflare
-  // Workers' waitUntil was being cancelled before generation finished, so
-  // we run inline. Typical generation is 40-90s; browsers will wait.
+  // SYNCHRONOUS generation — block the HTTP request until done.
   try {
     await generatePortal(c.env, jobId, ticker, quote);
   } catch (err) {
@@ -1064,7 +1097,313 @@ app.post('/generate', async (c) => {
     return c.json({ error: 'Generation failed: ' + String(err).slice(0, 200) }, 500);
   }
 
-  return c.json({ ok: true, jobId, ticker, redirect: `/stock-pitch/${ticker}` });
+  // ── Confidence pipeline: critic + fact-verifier → portals table ──
+  try {
+    const memoHtml = await c.env.REQUESTS.get(`portal:${ticker}:memo`);
+    const contentJson = await c.env.REQUESTS.get(`portal:${ticker}:content`);
+    let summary = '', direction = 'long', rating = 'BUY', priceTarget = 0, sector = '';
+    let totalWords = 0;
+
+    if (contentJson) {
+      try {
+        const content = JSON.parse(contentJson);
+        summary = (content.executiveSummary || '').slice(0, 300);
+        priceTarget = content.priceTargetNum || 0;
+        sector = content.sector || '';
+        direction = content.direction || 'long';
+        rating = content.rating || 'BUY';
+      } catch {}
+    }
+
+    // Run critic (structural + LLM scoring)
+    let criticScore = 50;
+    try {
+      if (memoHtml) {
+        const { critiquePortal } = await import('./lib/improve/critic');
+        const critique = await critiquePortal(c.env.AI, ticker, memoHtml);
+        criticScore = critique.overall_score || 50;
+      }
+    } catch (e) {
+      console.error('[confidence] critic failed (non-fatal)', e);
+    }
+
+    // Read fact verification results stored at generation time
+    let verificationRate = 0, totalClaims = 0, verifiedClaims = 0;
+    try {
+      if (contentJson) {
+        const content = JSON.parse(contentJson);
+        verificationRate = content.verificationRate || 0;
+        totalClaims = content.totalClaims || 0;
+        verifiedClaims = content.verifiedClaims || 0;
+      }
+    } catch (e) {
+      console.error('[confidence] fact-verify failed (non-fatal)', e);
+    }
+
+    // Word count from memo HTML
+    if (memoHtml) {
+      totalWords = memoHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    }
+
+    const upside = quote.price > 0 && priceTarget > 0 ? (priceTarget - quote.price) / quote.price : 0;
+    const confidence = Math.round((criticScore / 100) * 60 + verificationRate * 40);
+
+    await c.env.DB.prepare(`
+      INSERT INTO portals (id, ticker, company, sector, direction, rating, price_at_generation, price_target, upside_pct, critic_score, verification_rate, confidence_index, total_words, total_claims, verified_claims, summary, job_id, generated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(ticker) DO UPDATE SET
+        company=excluded.company, sector=excluded.sector, direction=excluded.direction, rating=excluded.rating,
+        price_at_generation=excluded.price_at_generation, price_target=excluded.price_target, upside_pct=excluded.upside_pct,
+        critic_score=excluded.critic_score, verification_rate=excluded.verification_rate, confidence_index=excluded.confidence_index,
+        total_words=excluded.total_words, total_claims=excluded.total_claims, verified_claims=excluded.verified_claims,
+        summary=excluded.summary, job_id=excluded.job_id, generated_at=excluded.generated_at
+    `).bind(
+      newId(), ticker, quote.company, sector, direction, rating,
+      quote.price, priceTarget, upside, criticScore, verificationRate, confidence,
+      totalWords, totalClaims, verifiedClaims, summary, jobId
+    ).run();
+
+    console.log(`[confidence] ${ticker}: critic=${criticScore} verify=${(verificationRate*100).toFixed(0)}% confidence=${confidence} PT=$${priceTarget} upside=${(upside*100).toFixed(0)}% dir=${direction}`);
+
+    // Auto-rebalance books after each generation
+    try {
+      const allP = await c.env.DB.prepare(
+        'SELECT ticker, direction, confidence_index, upside_pct, price_at_generation, price_target FROM portals WHERE confidence_index > 0'
+      ).all<{ ticker: string; direction: string; confidence_index: number; upside_pct: number; price_at_generation: number; price_target: number }>();
+      const rows = allP.results ?? [];
+      const longs = rows.filter(r => (r.upside_pct || 0) > 0.05 && r.confidence_index >= 30);
+      const shorts = rows.filter(r => (r.upside_pct || 0) < -0.05 && r.confidence_index >= 30);
+
+      await c.env.DB.prepare('DELETE FROM book_positions').run();
+      const insertBook = async (book: string, positions: typeof rows) => {
+        const totalScore = positions.reduce((s, p) => s + Math.abs(p.upside_pct || 0) * p.confidence_index, 0);
+        for (const p of positions) {
+          const score = Math.abs(p.upside_pct || 0) * p.confidence_index;
+          const weight = totalScore > 0 ? score / totalScore : 1 / positions.length;
+          await c.env.DB.prepare(
+            'INSERT INTO book_positions (id, book, ticker, confidence_index, weight_pct, price_at_entry, price_target) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          ).bind(newId(), book, p.ticker, p.confidence_index, weight, p.price_at_generation, p.price_target).run();
+        }
+      };
+      await insertBook('long', longs);
+      await insertBook('short', shorts);
+      console.log(`[books] Rebalanced: ${longs.length} long, ${shorts.length} short`);
+    } catch (e) {
+      console.error('[books] rebalance failed (non-fatal)', e);
+    }
+  } catch (e) {
+    console.error('[portal] portals table insert failed (non-fatal)', e);
+  }
+
+  return c.json({ ok: true, jobId, ticker, company: quote.company, redirect: `/stock-pitch/${ticker}` });
+});
+
+// ==========================================================================
+// FEEDBACK — per-section ratings feed the self-improvement loop
+// ==========================================================================
+app.post('/api/feedback', async (c) => {
+  const body = await c.req.json().catch(() => ({} as any));
+  const ticker = sanitizeTicker(String(body.ticker || ''));
+  if (!ticker) return c.json({ error: 'ticker required' }, 400);
+  const section = String(body.section || '').slice(0, 100);
+  const rating = Math.max(1, Math.min(5, parseInt(body.rating) || 3));
+  const comment = String(body.comment || '').slice(0, 500) || null;
+  const ip = c.req.header('cf-connecting-ip') || 'unknown';
+
+  const portal = await c.env.DB.prepare('SELECT id FROM portals WHERE ticker = ?').bind(ticker).first<{ id: string }>();
+  if (!portal) return c.json({ error: 'No portal found' }, 404);
+
+  await c.env.DB.prepare(
+    'INSERT INTO portal_feedback (id, portal_id, section, rating, comment, ip) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(newId(), portal.id, section, rating, comment, ip).run();
+
+  return c.json({ ok: true });
+});
+
+// ==========================================================================
+// BOOKS — rebalance long/short from confidence-weighted portals
+// ==========================================================================
+app.post('/api/books/rebalance', async (c) => {
+  const allPortals = await c.env.DB.prepare(
+    'SELECT ticker, direction, confidence_index, upside_pct, price_at_generation, price_target FROM portals WHERE confidence_index > 0'
+  ).all<{ ticker: string; direction: string; confidence_index: number; upside_pct: number; price_at_generation: number; price_target: number }>();
+
+  const rows = allPortals.results ?? [];
+  // Score = |implied_upside| × confidence. Long book = positive upside, short = negative.
+  const scored = rows.map(r => ({
+    ...r,
+    score: Math.abs(r.upside_pct || 0) * r.confidence_index,
+  }));
+  const longs = scored.filter(r => (r.upside_pct || 0) > 0.05 && r.confidence_index >= 30);
+  const shorts = scored.filter(r => (r.upside_pct || 0) < -0.05 && r.confidence_index >= 30);
+
+  const buildWeights = (positions: typeof scored) => {
+    const totalScore = positions.reduce((s, p) => s + p.score, 0);
+    return positions
+      .sort((a, b) => b.score - a.score)
+      .map(p => ({
+        ticker: p.ticker,
+        weight: totalScore > 0 ? p.score / totalScore : 1 / positions.length,
+        confidence: p.confidence_index,
+        pt: p.price_target,
+        entry: p.price_at_generation,
+      }));
+  };
+
+  const longWeights = buildWeights(longs);
+  const shortWeights = buildWeights(shorts);
+
+  await c.env.DB.prepare('DELETE FROM book_positions').run();
+
+  for (const w of longWeights) {
+    await c.env.DB.prepare(
+      'INSERT INTO book_positions (id, book, ticker, confidence_index, weight_pct, price_at_entry, price_target) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(newId(), 'long', w.ticker, w.confidence, w.weight, w.entry, w.pt).run();
+  }
+  for (const w of shortWeights) {
+    await c.env.DB.prepare(
+      'INSERT INTO book_positions (id, book, ticker, confidence_index, weight_pct, price_at_entry, price_target) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(newId(), 'short', w.ticker, w.confidence, w.weight, w.entry, w.pt).run();
+  }
+
+  return c.json({
+    ok: true,
+    long: { count: longWeights.length, positions: longWeights },
+    short: { count: shortWeights.length, positions: shortWeights },
+  });
+});
+
+// ==========================================================================
+// BATCH — seed queue + process next ticker
+// ==========================================================================
+const QQQ_TOP25 = ['AAPL','MSFT','NVDA','AMZN','META','AVGO','GOOGL','COST','TSLA','NFLX','AMD','QCOM','LIN','ADBE','TXN','ISRG','AMGN','BKNG','INTU','AMAT','PANW','MU','LRCX','KLAC','SNPS'];
+const SPX_TOP25 = ['BRK.B','UNH','JPM','XOM','V','JNJ','PG','MA','HD','ABBV','CVX','MRK','LLY','PEP','KO','BAC','WMT','CRM','ORCL','CSCO','TMO','ACN','MCD','ABT','PM'];
+
+app.post('/api/batch/seed', async (c) => {
+  const body = await c.req.json().catch(() => ({} as any));
+  const batch = body.batch || 'qqq+spx';
+  const tickers = [...new Set([...QQQ_TOP25, ...SPX_TOP25])];
+
+  let seeded = 0;
+  for (const t of tickers) {
+    try {
+      await c.env.DB.prepare(
+        'INSERT OR IGNORE INTO generation_queue (ticker, batch, priority) VALUES (?, ?, ?)'
+      ).bind(t, batch, QQQ_TOP25.includes(t) ? 2 : 1).run();
+      seeded++;
+    } catch {}
+  }
+
+  return c.json({ ok: true, seeded, total: tickers.length, batch });
+});
+
+app.post('/api/batch/next', async (c) => {
+  const next = await c.env.DB.prepare(
+    'SELECT ticker FROM generation_queue WHERE status = ? ORDER BY priority DESC, created_at ASC LIMIT 1'
+  ).bind('pending').first<{ ticker: string }>();
+
+  if (!next) return c.json({ ok: true, done: true, message: 'Queue empty' });
+
+  await c.env.DB.prepare(
+    "UPDATE generation_queue SET status = 'processing', started_at = datetime('now') WHERE ticker = ?"
+  ).bind(next.ticker).run();
+
+  try {
+    const { fetchPriceStrict } = await import('./lib/prices');
+    const quote = await fetchPriceStrict(next.ticker);
+    if (!quote) throw new Error(`Could not price ${next.ticker}`);
+
+    const jId = newId();
+    await c.env.DB.prepare(
+      `INSERT INTO portal_jobs (id, ticker, company, status, step, entry_price, entry_date)
+       VALUES (?, ?, ?, 'queued', 'Batch — starting research', ?, datetime('now'))`
+    ).bind(jId, next.ticker, quote.company, quote.price).run();
+
+    await generatePortal(c.env, jId, next.ticker, quote);
+
+    // Run confidence pipeline inline
+    const memoHtml = await c.env.REQUESTS.get(`portal:${next.ticker}:memo`);
+    const contentJson = await c.env.REQUESTS.get(`portal:${next.ticker}:content`);
+    let summary = '', direction = 'long', rating = 'BUY', priceTarget = 0, sector = '';
+    let criticScore = 50, verificationRate = 0.5, totalWords = 0, totalClaims = 0, verifiedClaims = 0;
+
+    if (contentJson) {
+      try {
+        const content = JSON.parse(contentJson);
+        summary = (content.executiveSummary || '').slice(0, 300);
+        priceTarget = content.priceTargetNum || 0;
+        sector = content.sector || '';
+        direction = content.direction || ((priceTarget > quote.price) ? 'long' : 'short');
+        rating = content.rating || (direction === 'long' ? 'BUY' : 'SELL');
+      } catch {}
+    }
+
+    if (memoHtml) {
+      try {
+        const { critiquePortal } = await import('./lib/improve/critic');
+        const critique = await critiquePortal(c.env.AI, next.ticker, memoHtml);
+        criticScore = critique.overall_score || 50;
+      } catch (e) { console.error('[batch] critic failed', e); }
+
+      totalWords = memoHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+    }
+
+    if (contentJson) {
+      try {
+        const { verifyPortal } = await import('./lib/improve/fact-verify');
+        const content = JSON.parse(contentJson);
+        const filingText = content.tenk_raw || '';
+        if (filingText.length > 100) {
+          const vr = verifyPortal(content, filingText);
+          verificationRate = vr.verification_rate;
+          totalClaims = vr.total_claims;
+          verifiedClaims = vr.verified;
+        }
+      } catch (e) { console.error('[batch] verify failed', e); }
+    }
+
+    const upside = quote.price > 0 && priceTarget > 0 ? (priceTarget - quote.price) / quote.price : 0;
+    const confidence = Math.round((criticScore / 100) * 60 + verificationRate * 40);
+
+    await c.env.DB.prepare(`
+      INSERT INTO portals (id, ticker, company, sector, direction, rating, price_at_generation, price_target, upside_pct, critic_score, verification_rate, confidence_index, total_words, total_claims, verified_claims, summary, job_id, generated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(ticker) DO UPDATE SET
+        company=excluded.company, sector=excluded.sector, direction=excluded.direction, rating=excluded.rating,
+        price_at_generation=excluded.price_at_generation, price_target=excluded.price_target, upside_pct=excluded.upside_pct,
+        critic_score=excluded.critic_score, verification_rate=excluded.verification_rate, confidence_index=excluded.confidence_index,
+        total_words=excluded.total_words, total_claims=excluded.total_claims, verified_claims=excluded.verified_claims,
+        summary=excluded.summary, job_id=excluded.job_id, generated_at=excluded.generated_at
+    `).bind(
+      newId(), next.ticker, quote.company, sector, direction, rating,
+      quote.price, priceTarget, upside, criticScore, verificationRate, confidence,
+      totalWords, totalClaims, verifiedClaims, summary, jId
+    ).run();
+
+    await c.env.DB.prepare(
+      "UPDATE generation_queue SET status = 'complete', completed_at = datetime('now') WHERE ticker = ?"
+    ).bind(next.ticker).run();
+
+    console.log(`[batch] ${next.ticker} done: confidence=${confidence} critic=${criticScore} verify=${(verificationRate*100).toFixed(0)}%`);
+    return c.json({ ok: true, ticker: next.ticker, confidence, criticScore, verificationRate });
+
+  } catch (err) {
+    await c.env.DB.prepare(
+      "UPDATE generation_queue SET status = 'failed', error = ? WHERE ticker = ?"
+    ).bind(String(err).slice(0, 500), next.ticker).run();
+    console.error(`[batch] ${next.ticker} failed:`, err);
+    return c.json({ ok: false, ticker: next.ticker, error: String(err).slice(0, 200) }, 500);
+  }
+});
+
+app.get('/api/batch/status', async (c) => {
+  const counts = await c.env.DB.prepare(`
+    SELECT status, COUNT(*) as count FROM generation_queue GROUP BY status
+  `).all<{ status: string; count: number }>();
+  const rows = await c.env.DB.prepare(
+    'SELECT ticker, status, started_at, completed_at, error FROM generation_queue ORDER BY priority DESC, created_at ASC'
+  ).all<any>();
+  return c.json({ counts: counts.results, queue: rows.results });
 });
 
 app.get('/jobs/:jobId', async (c) => {
@@ -1365,11 +1704,101 @@ export default {
 
     // Invalidate portfolio OG cache after NAV updates
     try {
-      // KV doesn't have a "delete by prefix" — use a list + delete in parallel
-      // Only expire the few known portfolio slugs; cheap enough to hit them explicitly.
       const slugs = ['top10'];
       await Promise.all(slugs.map(s => env.REQUESTS.delete(`og:p:${s}`)));
     } catch (e) {}
+
+    // Step 3: process next ticker in batch generation queue
+    try {
+      const next = await env.DB.prepare(
+        "SELECT ticker FROM generation_queue WHERE status = 'pending' ORDER BY priority DESC, created_at ASC LIMIT 1"
+      ).first<{ ticker: string }>();
+
+      if (next) {
+        console.log(`[cron-batch] Processing ${next.ticker}...`);
+        await env.DB.prepare(
+          "UPDATE generation_queue SET status = 'processing', started_at = datetime('now') WHERE ticker = ?"
+        ).bind(next.ticker).run();
+
+        const quote = await fetchPrice(next.ticker);
+        if (!quote) throw new Error(`Could not price ${next.ticker}`);
+
+        const jId = newId();
+        await env.DB.prepare(
+          `INSERT INTO portal_jobs (id, ticker, company, status, step, entry_price, entry_date)
+           VALUES (?, ?, ?, 'queued', 'Cron batch — starting research', ?, datetime('now'))`
+        ).bind(jId, next.ticker, quote.company, quote.price).run();
+
+        await generatePortal(env, jId, next.ticker, quote);
+
+        // Inline confidence scoring
+        const memoHtml = await env.REQUESTS.get(`portal:${next.ticker}:memo`);
+        let criticScore = 50, verificationRate = 0.5, totalWords = 0;
+        let summary = '', direction = 'long', rating = 'BUY', priceTarget = 0, sector = '';
+        let totalClaims = 0, verifiedClaims = 0;
+
+        const contentJson = await env.REQUESTS.get(`portal:${next.ticker}:content`);
+        if (contentJson) {
+          try {
+            const content = JSON.parse(contentJson);
+            summary = (content.executiveSummary || '').slice(0, 300);
+            priceTarget = content.priceTargetNum || 0;
+            sector = content.sector || '';
+            direction = content.direction || ((priceTarget > quote.price) ? 'long' : 'short');
+            rating = content.rating || (direction === 'long' ? 'BUY' : 'SELL');
+          } catch {}
+        }
+
+        if (memoHtml) {
+          totalWords = memoHtml.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+          try {
+            const { critiquePortal } = await import('./lib/improve/critic');
+            const critique = await critiquePortal(env.AI, next.ticker, memoHtml);
+            criticScore = critique.overall_score || 50;
+          } catch {}
+        }
+
+        if (contentJson) {
+          try {
+            const { verifyPortal } = await import('./lib/improve/fact-verify');
+            const content = JSON.parse(contentJson);
+            const filingText = content.tenk_raw || '';
+            if (filingText.length > 100) {
+              const vr = verifyPortal(content, filingText);
+              verificationRate = vr.verification_rate;
+              totalClaims = vr.total_claims;
+              verifiedClaims = vr.verified;
+            }
+          } catch {}
+        }
+
+        const upside = quote.price > 0 && priceTarget > 0 ? (priceTarget - quote.price) / quote.price : 0;
+        const confidence = Math.round((criticScore / 100) * 60 + verificationRate * 40);
+
+        await env.DB.prepare(`
+          INSERT INTO portals (id, ticker, company, sector, direction, rating, price_at_generation, price_target, upside_pct, critic_score, verification_rate, confidence_index, total_words, total_claims, verified_claims, summary, job_id, generated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(ticker) DO UPDATE SET
+            company=excluded.company, sector=excluded.sector, direction=excluded.direction, rating=excluded.rating,
+            price_at_generation=excluded.price_at_generation, price_target=excluded.price_target, upside_pct=excluded.upside_pct,
+            critic_score=excluded.critic_score, verification_rate=excluded.verification_rate, confidence_index=excluded.confidence_index,
+            total_words=excluded.total_words, total_claims=excluded.total_claims, verified_claims=excluded.verified_claims,
+            summary=excluded.summary, job_id=excluded.job_id, generated_at=excluded.generated_at
+        `).bind(
+          newId(), next.ticker, quote.company, sector, direction, rating,
+          quote.price, priceTarget, upside, criticScore, verificationRate, confidence,
+          totalWords, totalClaims, verifiedClaims, summary, jId
+        ).run();
+
+        await env.DB.prepare(
+          "UPDATE generation_queue SET status = 'complete', completed_at = datetime('now') WHERE ticker = ?"
+        ).bind(next.ticker).run();
+
+        console.log(`[cron-batch] ${next.ticker} done: confidence=${confidence}`);
+      }
+    } catch (err) {
+      console.error('[cron-batch] failed:', err);
+    }
   },
 };
 

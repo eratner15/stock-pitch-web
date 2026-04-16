@@ -189,8 +189,8 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
   <div class="wrap">
     <a href="/" class="mh-brand"><span class="dot"></span>Stock Pitch</a>
     <nav class="mh-nav">
-      <a href="/leaderboard">Leaderboard</a>
-      <a href="/p/top10">Top 10</a>
+      <a href="/library">Library</a>
+      <a href="/leaderboard">Board</a>
     </nav>
   </div>
 </header>
@@ -199,7 +199,7 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
   <div class="wrap">
     <h1>Pitch a <em>stock.</em></h1>
     <p class="hero-tag">Enter a ticker. Get an AI research brief. The market keeps score.</p>
-    <form class="ticker-form" action="/submit" method="get" onsubmit="return sanitizeTicker(event)">
+    <form class="ticker-form" action="/research" method="get" onsubmit="return sanitizeTicker(event)">
       <input name="ticker" id="heroTicker" placeholder="TYPE A TICKER" maxlength="8" autocomplete="off" spellcheck="false" autofocus>
       <button type="submit">Pitch →</button>
     </form>

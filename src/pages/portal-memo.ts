@@ -23,8 +23,25 @@ export function renderPortalMemo(input: PortalMemoInput): string {
   const { ticker, company, content, quote, filing_10k_url, filing_10k_date, generated_at } = input;
   const price = quote ? `$${quote.price.toFixed(2)}` : '—';
   const asOf = quote?.as_of ? quote.as_of.slice(0, 10) : '';
-  const ptFirst = (content.consensus.ourPt || '').split(/[—–-]/)[0].trim() || '—';
-  const ptDelta = content.consensus.ourPt || '—';
+
+  // Extract numeric price target from consensus or priceTargetSection
+  let ptNum: number | null = null;
+  const ptSources = [content.consensus.ourPt || '', content.priceTargetSection || ''];
+  for (const src of ptSources) {
+    const m = src.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (m) { ptNum = parseFloat(m[1]); break; }
+  }
+  const ptFirst = ptNum != null ? `$${ptNum.toFixed(0)}` : '—';
+  const currentPrice = quote?.price ?? 0;
+  const impliedUpside = (ptNum != null && currentPrice > 0)
+    ? ((ptNum - currentPrice) / currentPrice * 100)
+    : null;
+  const impliedStr = impliedUpside != null
+    ? `${impliedUpside >= 0 ? '+' : ''}${impliedUpside.toFixed(0)}%`
+    : '—';
+  const impliedColor = impliedUpside != null
+    ? (impliedUpside >= 0 ? 'color:var(--bull)' : 'color:var(--bear)')
+    : '';
 
   // Render prose with inline sidenote margin callouts. The generator already
   // stripped [[SIDENOTE: …]] markers from prose and collected them separately.
@@ -40,8 +57,8 @@ export function renderPortalMemo(input: PortalMemoInput): string {
   <div class="memo-tagline">${escapeHtml(content.tagline)}.</div>
   <div class="memo-rating-strip">
     <div class="rs"><div class="lbl">Current Price</div><div class="val">${price}</div></div>
-    <div class="rs"><div class="lbl">Price Target</div><div class="val gold">${escapeHtml(ptFirst)}</div></div>
-    <div class="rs"><div class="lbl">Implied</div><div class="val" style="font-size:14px">${escapeHtml((ptDelta.match(/[-+]?\d+%\s*\w+/) || ['—'])[0])}</div></div>
+    <div class="rs"><div class="lbl">Price Target</div><div class="val gold">${ptFirst}</div></div>
+    <div class="rs"><div class="lbl">Implied</div><div class="val" style="font-size:16px;font-weight:800;${impliedColor}">${impliedStr}</div></div>
     <div class="rs"><div class="lbl">Analyst</div><div class="val" style="font-size:14px">LCS Research</div></div>
     <div class="rs"><div class="lbl">Date</div><div class="val" style="font-size:14px">${asOf || generated_at.slice(0,10)}</div></div>
   </div>

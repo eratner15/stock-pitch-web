@@ -25,14 +25,15 @@ import {
   fetchLatest10K,
   fetchLatest10Q,
 } from './edgar';
+import { verifyPortal as runFactVerifier } from './improve/fact-verify';
 
-// Primary writer — Llama 3.3 70B on Workers AI. NOT a reasoning model,
-// so output lands in message.content directly. Gemma 4 26B IS a reasoning
-// model (output goes to message.reasoning, content stays null) which is
-// why the first JSON attempt failed silently. Llama 3.3 70B fp8-fast is
-// the right fit: good long-form writing + clean instruct output.
+// Model routing: right model for the right job.
+// - PRIMARY: long-form institutional prose (Llama 3.3 70B, best writer)
+// - NUMBERS: structured financial JSON (Gemma 4 26B, reasoning model, better with numbers)
+// - FAST: low-stakes structured output like deck slides + diligence Qs (Llama 8B, fast)
 const PRIMARY_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const FAST_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+const NUMBERS_MODEL = '@cf/google/gemma-4-12b-it';
+const FAST_MODEL = '@cf/meta/llama-3.1-8b-instruct';
 
 // ---------------------------------------------------------------------------
 // Research payload — what the writer sees
@@ -284,6 +285,18 @@ export interface PortalContent {
   bearPoints: string[];
   diligenceQuestions: Array<{ q: string; rationale: string }>;
 
+  // Structured metadata for confidence pipeline + books
+  priceTargetNum: number | null;
+  impliedUpside: number | null;
+  direction: 'long' | 'short';
+  rating: string;
+  sector: string;
+
+  // Fact verification results (computed at generation time)
+  verificationRate: number;
+  totalClaims: number;
+  verifiedClaims: number;
+
   // Tufte sidenotes — rendered as margin callouts
   sidenotes: string[];
 
@@ -338,7 +351,7 @@ ${r.tenq_excerpt || '(not available)'}
   // Voice + sector guidance — every call gets the sector hint so the
   // prompts nudge toward REIT / bank / SaaS / commodity / etc. frameworks.
   const sectorHint = sectorGuidance(r.sector as Sector);
-  const voiceWithSector = voiceWithSector + `\n\nSECTOR CONTEXT: ${sectorHint}`;
+  const voiceWithSector = VOICE_SYSTEM + `\n\nSECTOR CONTEXT: ${sectorHint}`;
   const sysJson = (schemaHint: string) => `${voiceWithSector}
 
 Return ONE JSON object, nothing else — no preamble, no markdown fence.
@@ -354,11 +367,15 @@ ${researchCard}`;
 
   console.log(`[portal][${r.ticker}] deep generation start. mda=${r.mda_excerpt.length} risks=${r.risks_excerpt.length} 10q=${r.tenq_excerpt.length}`);
 
-  // SPLIT Call A into many smaller calls after iter1 showed the single big
-  // JSON was truncating 70% of its sections. Now each prose section is its
-  // own plain-markdown call. Only tagline+bluf+bullets stays as JSON (small).
-  const batch1 = Promise.all([
-    // Small JSON for thin structured data (tagline, bluf, bullet arrays)
+  // ══════════════════════════════════════════════════════════════
+  // ORCHESTRATOR PIPELINE: foundation → prose → polish
+  // Phase 1 runs first; its output feeds Phase 2 as context so
+  // every prose section references the same financial model, PT,
+  // and thesis. This replaces the old 3-parallel-batch approach.
+  // ══════════════════════════════════════════════════════════════
+
+  // ── PHASE 1: FOUNDATION (thesis spine + financial model + consensus) ──
+  const [rawThesisSpine, rawFinancials, rawConsensus] = await Promise.all([
     runModel(
     ai, PRIMARY_MODEL,
     sysJson(`{
@@ -367,16 +384,59 @@ ${researchCard}`;
   "bullPoints": ["6 bullets each 22-32 words citing a specific number from 10-K"],
   "bearPoints": ["4 bullets each 22-32 words citing a specific risk from Item 1A"]
 }`),
-    `Produce the THESIS SPINE JSON for ${r.ticker} — tagline, BLUF, bulls, bears. Concise and specific.\n\n${userBase}`,
+    `Produce the THESIS SPINE JSON for ${r.ticker} — tagline, BLUF, bulls, bears. Concise and specific.\n\n${userWithFoundation}`,
     { max_tokens: 2000, temperature: 0.5, timeoutMs: 50_000 }
   ),
+    runModel(
+    ai, NUMBERS_MODEL,
+    sysJson(`{
+  "historical": [{"year": "FY23", "revenue": "$X.XB", "operatingIncome": "$X.XB", "eps": "$X.XX"}],
+  "projected": [{"year": "FY26E", "revenue": "$X.XB", "ebitdaMargin": "X%", "eps": "$X.XX"}],
+  "keyMetrics": [{"label": "Shares Outstanding", "value": "X.XB", "source": "[10-K]"}],
+  "dcfNarrative": "one paragraph, 80 words, on WACC + terminal growth + intrinsic anchor"
+}`),
+    `Produce the FINANCIALS JSON for ${r.ticker}. 3 historical rows, 3 projected rows, 4-6 keyMetrics.\n\n${userWithFoundation}`,
+    { max_tokens: 1400, temperature: 0.3, timeoutMs: 45_000 }
+  ),
+    runModel(
+    ai, NUMBERS_MODEL,
+    sysJson(`{
+  "streetView": "one paragraph, 60 words, with [Consensus] tags",
+  "peerTickers": ["TICKER1", "TICKER2"],
+  "peerNote": "one paragraph, 80 words",
+  "ourPt": "$XXX.XX — Y% upside",
+  "ptMethodology": "one paragraph, 80 words"
+}`),
+    `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? `$${r.quote.price.toFixed(2)}` : 'n/a'}. Give 4-6 peer tickers.\n\n${userWithFoundation}`,
+    { max_tokens: 1200, temperature: 0.5, timeoutMs: 45_000 }
+  ),
+  ]);
+
+  // Parse foundation results → build context block for Phase 2
+  const thesisParsed = parsePortalJson(rawThesisSpine);
+  const financialsParsed = parsePortalJson(rawFinancials);
+  const consensusParsed = parsePortalJson(rawConsensus);
+  const foundationContext = `
+FOUNDATION — reference these in your section for consistency:
+THESIS: ${thesisParsed.tagline || ''} | BLUF: ${(thesisParsed.bluf || '').slice(0, 200)}
+PRICE TARGET: ${consensusParsed.ourPt || 'pending'}
+FINANCIALS: ${(financialsParsed.historical || []).map((h: any) => `${h.year}: Rev ${h.revenue}, EPS ${h.eps}`).join('; ')} | Projected: ${(financialsParsed.projected || []).map((p: any) => `${p.year}: Rev ${p.revenue}, EPS ${p.eps}`).join('; ')}
+PEERS: ${(consensusParsed.peerTickers || []).join(', ')}
+`.trim();
+
+  console.log(`[portal][${r.ticker}] Phase 1 done. Foundation: PT=${consensusParsed.ourPt || 'n/a'}, ${(financialsParsed.historical || []).length} hist rows.`);
+
+  // ── PHASE 2: PROSE (16 calls, all with foundation context) ──
+  const userWithFoundation = `${userBase}\n\n${foundationContext}`;
+
+  const batch1 = Promise.all([
     // Plain markdown for each prose section
     runModel(
       ai, PRIMARY_MODEL,
       voiceWithSector + `
 
 OUTPUT: 500-600 words of executive-summary prose. No heading. 4+ specific dollar amounts, 3+ growth rates, 2+ specific dates. 2 sidenote markers [[SIDENOTE: ...]]. Dense source tags.`,
-      `Write the EXECUTIVE SUMMARY for ${r.ticker}. Setup → mispricing → PT → catalyst timeline. 500-600 words.\n\n${userBase}`,
+      `Write the EXECUTIVE SUMMARY for ${r.ticker}. Setup → mispricing → PT → catalyst timeline. 500-600 words.\n\n${userWithFoundation}`,
       { max_tokens: 2200, temperature: 0.5, timeoutMs: 65_000 }
     ),
     runModel(
@@ -390,7 +450,7 @@ OUTPUT: **write 800-1000 words — do NOT stop before 800 words**. No heading. F
   P4: Segment 3 (or geographic split if only 2 segments) — same structure
   P5: One non-obvious structural feature the market doesn't discuss + why it matters
 3 sidenotes [[SIDENOTE: ...]]. 10+ source tags. Every dollar carries [10-K].`,
-      `Write the BUSINESS OVERVIEW for ${r.ticker}. 800-1000 words in 5 paragraphs.\n\n${userBase}`,
+      `Write the BUSINESS OVERVIEW for ${r.ticker}. 800-1000 words in 5 paragraphs.\n\n${userWithFoundation}`,
       { max_tokens: 3500, temperature: 0.5, timeoutMs: 75_000 }
     ),
     runModel(
@@ -398,7 +458,7 @@ OUTPUT: **write 800-1000 words — do NOT stop before 800 words**. No heading. F
       voiceWithSector + `
 
 OUTPUT: 500-600 words on what the MARKET currently prices. No heading. Cover: consensus EPS path year-by-year, current P/E or EV/EBITDA or EV/Sales, stock performance 1Y/3Y/5Y, analyst rating mix (Buy/Hold/Sell count), narrative the Street has settled on. Tag [Consensus]/[Market]/[Estimated]. 1-2 sidenotes.`,
-      `Write THE SITUATION section for ${r.ticker}.\n\n${userBase}`,
+      `Write THE SITUATION section for ${r.ticker}.\n\n${userWithFoundation}`,
       { max_tokens: 2200, temperature: 0.5, timeoutMs: 65_000 }
     ),
     runModel(
@@ -406,7 +466,7 @@ OUTPUT: 500-600 words on what the MARKET currently prices. No heading. Cover: co
       voiceWithSector + `
 
 OUTPUT: 500-600 words on what's MISPRICED. No heading. Specific numerical gap: consensus FY26E EPS X vs our Y. Reference specific 10-K material the market is discounting (guidance commentary, segment disclosures, capex trajectory). 2 sidenotes.`,
-      `Write THE COMPLICATION section for ${r.ticker}.\n\n${userBase}`,
+      `Write THE COMPLICATION section for ${r.ticker}.\n\n${userWithFoundation}`,
       { max_tokens: 2200, temperature: 0.5, timeoutMs: 65_000 }
     ),
     runModel(
@@ -414,7 +474,7 @@ OUTPUT: 500-600 words on what's MISPRICED. No heading. Specific numerical gap: c
       voiceWithSector + `
 
 OUTPUT: 700-900 words of valuation analysis. No heading. Name method (SOTP / DCF / multiple / NAV). Show math end-to-end: assumptions → multiple → per-share value. If DCF, state WACC (risk-free, ERP, beta) + terminal growth. Compare to 5Y historical trading range. 2 sidenotes.`,
-      `Write the VALUATION section for ${r.ticker}. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}. 700-900 words.\n\n${userBase}`,
+      `Write the VALUATION section for ${r.ticker}. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}. 700-900 words.\n\n${userWithFoundation}`,
       { max_tokens: 3200, temperature: 0.5, timeoutMs: 70_000 }
     ),
     runModel(
@@ -422,7 +482,7 @@ OUTPUT: 700-900 words of valuation analysis. No heading. Name method (SOTP / DCF
       voiceWithSector + `
 
 OUTPUT: 500-700 words. No heading. State PT explicitly. Show upside/downside vs current. Three scenarios — Base (60%), Bull (25%), Bear (15%) — each with specific price, driver, EPS assumption, multiple. Probability-weighted EV at the end.`,
-      `Write the PRICE TARGET SECTION for ${r.ticker} with three scenarios. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\n${userBase}`,
+      `Write the PRICE TARGET SECTION for ${r.ticker} with three scenarios. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\n${userWithFoundation}`,
       { max_tokens: 2400, temperature: 0.5, timeoutMs: 65_000 }
     ),
   ]);
@@ -433,7 +493,7 @@ OUTPUT: 500-700 words. No heading. State PT explicitly. Show upside/downside vs 
     voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " followed by an 8-12 word argumentative H2 headline. Remaining content is 800-1000 words of prose in 4-5 paragraphs. Every financial number carries a source tag. 15+ source tags total. 3 sidenote markers [[SIDENOTE: ...]]. No preamble, no meta.`,
-    `Write the STRONGEST bull-case deep-dive for ${r.ticker}. Pick the most material structural advantage in the 10-K MD&A. Cover: 3-year revenue trajectory with growth rates, margin path with percentages, named products/customers/partnerships, competitive positioning with named rivals, guidance quotes, and capex/R&D.\n\n${userBase}`,
+    `Write the STRONGEST bull-case deep-dive for ${r.ticker}. Pick the most material structural advantage in the 10-K MD&A. Cover: 3-year revenue trajectory with growth rates, margin path with percentages, named products/customers/partnerships, competitive positioning with named rivals, guidance quotes, and capex/R&D.\n\n${userWithFoundation}`,
     { max_tokens: 3500, temperature: 0.55, timeoutMs: 75_000 }
   ),
     // ---- Call A3: Supporting point #2 (plain markdown output) ----
@@ -442,7 +502,7 @@ OUTPUT FORMAT: FIRST line is "# " followed by an 8-12 word argumentative H2 head
     voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of institutional analysis in 4-5 paragraphs. 15+ source tags. 3 sidenote markers [[SIDENOTE: ...]]. No preamble.`,
-    `Write the SECOND-STRONGEST bull deep-dive for ${r.ticker}. ORTHOGONAL to the first deep dive (different axis).\n\n${userBase}`,
+    `Write the SECOND-STRONGEST bull deep-dive for ${r.ticker}. ORTHOGONAL to the first deep dive (different axis).\n\n${userWithFoundation}`,
     { max_tokens: 3500, temperature: 0.55, timeoutMs: 75_000 }
   ),
     // ---- Call A4: Risks (plain markdown) ----
@@ -451,8 +511,8 @@ OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of institu
     voiceWithSector + `
 
 OUTPUT FORMAT: 700-900 words of prose covering 4-5 specific risks. Each risk is a paragraph starting with a **bold heading**. Include: probability (low/medium/high), magnitude (EPS hit or multiple compression), warning signs, historical precedent. 2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
-    `Write the KEY RISKS section for ${r.ticker}. 4-5 specific risks from Item 1A. 700-900 words.\n\n${userBase}`,
-    { max_tokens: 2800, temperature: 0.5, timeoutMs: 70_000 }
+    `Write the KEY RISKS section for ${r.ticker}. 4-5 specific risks from Item 1A risk factors. Each risk must have a bold heading, probability, magnitude estimate, and warning signs. 700-900 words. START IMMEDIATELY with the first risk heading — no introduction.\n\n${userWithFoundation}`,
+    { max_tokens: 3200, temperature: 0.55, timeoutMs: 80_000, minChars: 300 }
   ),
     // ---- Call A4b: Catalysts (plain markdown) ----
     runModel(
@@ -460,8 +520,8 @@ OUTPUT FORMAT: 700-900 words of prose covering 4-5 specific risks. Each risk is 
     voiceWithSector + `
 
 OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the next 12-24 months. Each catalyst is a paragraph starting with a **bold date+event heading** like "**Q1 FY26 earnings · February 2026**". Include: what the event is, how it moves the stock (price delta), Street consensus vs our view, what would be a beat vs miss. 1-2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
-    `Write the CATALYSTS section for ${r.ticker}. 5-7 time-bound events, each with specific date.\n\n${userBase}`,
-    { max_tokens: 2400, temperature: 0.5, timeoutMs: 70_000 }
+    `Write the CATALYSTS section for ${r.ticker}. 5-7 time-bound events with specific calendar dates (e.g. "Q2 FY26 earnings · July 2026"). Each catalyst: what happens, price impact estimate, Street consensus vs our view. START IMMEDIATELY with the first catalyst heading — no introduction.\n\n${userWithFoundation}`,
+    { max_tokens: 2800, temperature: 0.55, timeoutMs: 80_000, minChars: 300 }
   ),
     // ---- Call A5: Third supporting deep dive (plain markdown) ----
     runModel(
@@ -469,7 +529,7 @@ OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the 
       voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words, 4-5 paragraphs, 15+ source tags, 3 sidenotes [[SIDENOTE: ...]]. No preamble.`,
-      `Write a THIRD bull deep-dive for ${r.ticker}. Orthogonal to the first two (pick: international expansion, margin inflection, capex cycle, capital return, product cycle, regulatory tailwind, pricing power).\n\n${userBase}`,
+      `Write a THIRD bull deep-dive for ${r.ticker}. Orthogonal to the first two (pick: international expansion, margin inflection, capex cycle, capital return, product cycle, regulatory tailwind, pricing power).\n\n${userWithFoundation}`,
       { max_tokens: 3500, temperature: 0.55, timeoutMs: 75_000 }
     ),
     // ---- Call A6: SOTP / Hidden Value (plain markdown) ----
@@ -478,7 +538,7 @@ OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words, 4-5 parag
       voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of prose. Table-in-prose: break out each segment/asset, estimate revenue and EBITDA [10-K], apply a peer multiple (cite the peer), arrive at a value [Computed]. Sum to get implied EV. Compare to current mkt cap. Flag hidden assets. 3 sidenotes.`,
-      `Sum-of-parts / hidden value deep-dive for ${r.ticker}. Segment-by-segment math. 800-1000 words.\n\n${userBase}`,
+      `Sum-of-parts / hidden value deep-dive for ${r.ticker}. Segment-by-segment math. 800-1000 words.\n\n${userWithFoundation}`,
       { max_tokens: 3500, temperature: 0.5, timeoutMs: 75_000 }
     ),
     // ---- Call A7: Management (plain markdown) ----
@@ -487,7 +547,7 @@ OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of prose. 
       voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on management + capital allocation. Then 700-900 words of prose. Name CEO, CFO, tenure, prior roles. Cite buybacks ($ amounts + share count reductions over 3-5 years), dividends initiated/raised, major M&A (names + prices + IRR), capex trajectory. Compare capital return as % of FCF to peers. Named past decisions that created or destroyed value. 2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
-      `Management + capital allocation deep-dive for ${r.ticker}. 700-900 words. Name names and cite dollars.\n\n${userBase}`,
+      `Management + capital allocation deep-dive for ${r.ticker}. 700-900 words. Name names and cite dollars.\n\n${userWithFoundation}`,
       { max_tokens: 2800, temperature: 0.5, timeoutMs: 70_000 }
     ),
     // ---- Call A7b: Revenue & Earnings Bridge (plain markdown) ----
@@ -496,7 +556,7 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on management + capital alloca
       voiceWithSector + `
 
 OUTPUT FORMAT: 700-900 words of prose, no heading. Walk from last-reported revenue → next 3-year revenue, decomposing by segment growth rates (organic vs acquired). Then walk from revenue → operating income (margin assumptions stated) → EPS (share count + tax rate stated). Include a Street-consensus vs our-estimates comparison. 2 sidenotes [[SIDENOTE: ...]]. Dense [10-K]/[Estimated] tags. No preamble.`,
-      `Revenue & earnings bridge for ${r.ticker}. Walk forward 3 years with segment decomposition.\n\n${userBase}`,
+      `Revenue & earnings bridge for ${r.ticker}. Walk forward 3 years with segment decomposition.\n\n${userWithFoundation}`,
       { max_tokens: 2800, temperature: 0.4, timeoutMs: 70_000 }
     ),
     // ---- Call A8: Competitive Landscape (plain markdown) ----
@@ -511,51 +571,22 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
   P4: Direct Competitor 3 — same structure
   P5: ${r.ticker}'s moat — cost / network / switching / brand / regulatory / scale — with specific evidence
 15+ source tags [10-K], [Market], [Computed]. 3 sidenote markers [[SIDENOTE: ...]]. Every competitor revenue carries a [Market] or [10-K] tag. No preamble.`,
-      `Competitive landscape deep-dive for ${r.ticker}. 800-1000 words with specific competitor revenues, market share %, and moat evidence. Minimum 15 source tags.\n\n${userBase}`,
+      `Competitive landscape deep-dive for ${r.ticker}. 800-1000 words with specific competitor revenues, market share %, and moat evidence. Minimum 15 source tags.\n\n${userWithFoundation}`,
       { max_tokens: 3500, temperature: 0.5, timeoutMs: 80_000 }
     ),
   ]);
+  // ── PHASE 3: POLISH (deck + diligence — lightweight structured output) ──
+  // Financials (rawB) and Consensus (rawC) already ran in Phase 1.
   const batch3 = Promise.all([
-    // ---- Call B: Financials ----
+    // ---- Call D: 8-slide deck (FAST_MODEL — structured, low-stakes) ----
     runModel(
-    ai, PRIMARY_MODEL,
-    sysJson(`{
-  "historical": [
-    {"year": "FY23", "revenue": "$X.XB", "operatingIncome": "$X.XB", "eps": "$X.XX"}
-  ],
-  "projected": [
-    {"year": "FY26E", "revenue": "$X.XB", "ebitdaMargin": "X%", "eps": "$X.XX"}
-  ],
-  "keyMetrics": [
-    {"label": "Shares Outstanding", "value": "X.XB", "source": "[10-K]"}
-  ],
-  "dcfNarrative": "one paragraph, 80 words, on WACC + terminal growth + intrinsic anchor"
-}`),
-    `Produce the FINANCIALS JSON for ${r.ticker}. 3 historical rows, 3 projected rows, 4-6 keyMetrics.\n\n${userBase}`,
-    { max_tokens: 1400, temperature: 0.3, timeoutMs: 45_000 }
-  ),
-    // ---- Call C: Consensus + peer comps ----
-    runModel(
-    ai, PRIMARY_MODEL,
-    sysJson(`{
-  "streetView": "one paragraph, 60 words, with [Consensus] tags",
-  "peerTickers": ["TICKER1", "TICKER2"],
-  "peerNote": "one paragraph, 80 words",
-  "ourPt": "$XXX.XX — Y% upside",
-  "ptMethodology": "one paragraph, 80 words"
-}`),
-    `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? `$${r.quote.price.toFixed(2)}` : 'n/a'}. Give 4-6 peer tickers.\n\n${userBase}`,
-    { max_tokens: 1200, temperature: 0.5, timeoutMs: 45_000 }
-  ),
-    // ---- Call D: 8-slide deck ----
-    runModel(
-    ai, PRIMARY_MODEL,
+    ai, FAST_MODEL,
     sysJson(`{
   "deckSlides": [
     {"title": "Cover", "bullets": ["b1","b2","b3"], "speakerNote": "1 sentence"}
   ]
 }`),
-    `Produce DECK JSON for ${r.ticker}. EXACTLY 8 slides in order: Cover, Business snapshot, Situation, Complication, Bull case, Bear case, Valuation & PT, Call to action. Each slide has exactly 3 bullets (8-15 words each) and one speakerNote.\n\n${userBase}`,
+    `Produce DECK JSON for ${r.ticker}. EXACTLY 8 slides in order: Cover, Business snapshot, Situation, Complication, Bull case, Bear case, Valuation & PT, Call to action. Each slide has exactly 3 bullets (8-15 words each) and one speakerNote.\n\n${userWithFoundation}`,
     { max_tokens: 1800, temperature: 0.5, timeoutMs: 45_000 }
   ),
     // ---- Call E: Diligence questions ----
@@ -566,17 +597,16 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
     {"q": "question", "rationale": "one sentence why it matters"}
   ]
 }`),
-    `Produce DILIGENCE JSON with EXACTLY 5 probing questions a Levin analyst asks management at the next earnings call, each with a one-line rationale.\n\n${userBase}`,
+    `Produce DILIGENCE JSON with EXACTLY 5 probing questions a Levin analyst asks management at the next earnings call, each with a one-line rationale.\n\n${userWithFoundation}`,
     { max_tokens: 800, temperature: 0.6, timeoutMs: 30_000 }
   ),
   ]);
+  // Phase 2+3 run in parallel (thesis spine already resolved in Phase 1)
   const [resolvedBatch1, resolvedBatch2, resolvedBatch3] = await Promise.all([batch1, batch2, batch3]);
-  const [rawThesisSpine, rawExec, rawBiz, rawSit, rawComp, rawVal, rawPt] = resolvedBatch1;
+  const [rawExec, rawBiz, rawSit, rawComp, rawVal, rawPt] = resolvedBatch1;
   const [rawA2, rawA3, rawA4risks, rawA4cats, rawA5, rawA6, rawMgmt, rawBridge, rawA8] = resolvedBatch2;
-  const [rawB, rawC, rawD, rawE] = resolvedBatch3;
-  // Thesis spine (small JSON with tagline/bluf/bulls/bears only)
-  const thesisParsed = parsePortalJson(rawThesisSpine);
-  // Each prose section is now its own plain-markdown call
+  const [rawD, rawE] = resolvedBatch3;
+  // thesisParsed, financialsParsed, consensusParsed already resolved in Phase 1
   const execBody = rawExec ? rawExec.trim() : '';
   const bizBody = rawBiz ? rawBiz.trim() : '';
   const sitBody = rawSit ? rawSit.trim() : '';
@@ -585,18 +615,53 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
   const ptBody = rawPt ? rawPt.trim() : '';
   const support1Parsed = parseMarkdownSection(rawA2);
   const support2Parsed = parseMarkdownSection(rawA3);
-  const risksBody = rawA4risks ? rawA4risks.trim() : '';
-  const catalystsBody = rawA4cats ? rawA4cats.trim() : '';
+  let risksBody = rawA4risks ? rawA4risks.trim() : '';
+  let catalystsBody = rawA4cats ? rawA4cats.trim() : '';
+
+  // Targeted retry for critical "pending" sections — risks and catalysts are key conviction drivers
+  const RISK_PROMPT = voiceWithSector + `\nOUTPUT FORMAT: 700-900 words covering 4-5 specific risks. Each risk = bold heading + paragraph with probability (low/medium/high), magnitude (EPS impact or multiple compression), warning signs to monitor, and historical precedent. 2 sidenotes [[SIDENOTE: ...]]. No preamble — start directly with the first risk heading.`;
+  const CATALYST_PROMPT = voiceWithSector + `\nOUTPUT FORMAT: 600-800 words listing 5-7 time-bound catalysts. Each catalyst = bold date+event heading (e.g. "**Q2 FY26 earnings · July 2026**") + paragraph with what event is, price delta estimate, Street consensus vs our view, beat vs miss scenario. 1-2 sidenotes [[SIDENOTE: ...]]. No preamble — start directly with the first catalyst heading.`;
+
+  for (let attempt = 0; attempt < 2 && risksBody.length < 200; attempt++) {
+    console.log(`[portal][${r.ticker}] Risks too short (${risksBody.length}), retry ${attempt + 1}...`);
+    const retryRisks = await runModel(
+      ai, PRIMARY_MODEL,
+      RISK_PROMPT,
+      `Write the KEY RISKS section for ${r.ticker}. Pull directly from Item 1A risk factors in the 10-K filing. 4-5 specific, concrete risks with numbers. 700+ words minimum.\n\nRISK FACTORS FROM 10-K:\n${r.risks_excerpt.slice(0, 15000)}\n\n${userWithFoundation}`,
+      { max_tokens: 3500, temperature: 0.65 + attempt * 0.1, timeoutMs: 100_000, minChars: 300 }
+    );
+    if (retryRisks && retryRisks.trim().length > risksBody.length) {
+      risksBody = retryRisks.trim();
+    }
+  }
+
+  for (let attempt = 0; attempt < 2 && catalystsBody.length < 200; attempt++) {
+    console.log(`[portal][${r.ticker}] Catalysts too short (${catalystsBody.length}), retry ${attempt + 1}...`);
+    const retryCats = await runModel(
+      ai, PRIMARY_MODEL,
+      CATALYST_PROMPT,
+      `Write the CATALYSTS section for ${r.ticker}. 5-7 time-bound events over the next 12-24 months. Include earnings dates, product launches, regulatory decisions, M&A timelines. Each with specific calendar date.\n\n${userWithFoundation}`,
+      { max_tokens: 3000, temperature: 0.65 + attempt * 0.1, timeoutMs: 100_000, minChars: 300 }
+    );
+    if (retryCats && retryCats.trim().length > catalystsBody.length) {
+      catalystsBody = retryCats.trim();
+    }
+  }
+
+  // Last-resort: if still empty, synthesize from raw 10-K risk factors
+  if (risksBody.length < 100 && r.risks_excerpt.length > 500) {
+    console.log(`[portal][${r.ticker}] Risks: using 10-K excerpt as fallback`);
+    risksBody = `**Key risks identified in ${r.ticker}'s 10-K filing (Item 1A):**\n\n${r.risks_excerpt.slice(0, 3000).replace(/\s+/g, ' ')}`;
+  }
   const support3Parsed = parseMarkdownSection(rawA5);
   const sotpParsed = parseMarkdownSection(rawA6);
   const mgmtParsed = parseMarkdownSection(rawMgmt);
   const bridgeBody = rawBridge ? rawBridge.trim() : '';
   const competitiveParsed = parseMarkdownSection(rawA8);
-  const financialsParsed = parsePortalJson(rawB);
-  const consensusParsed = parsePortalJson(rawC);
+  // financialsParsed + consensusParsed already parsed in Phase 1
   const deckParsed = parsePortalJson(rawD);
   const diligenceParsed = parsePortalJson(rawE);
-  console.log(`[portal][${r.ticker}] all 12 calls parsed.`);
+  console.log(`[portal][${r.ticker}] All phases complete. Foundation → Prose → Polish.`);
 
   // Extract sidenote markers + strip them from the prose, collecting to sidebar
   const allSidenotes: string[] = [];
@@ -607,6 +672,31 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
       return '';
     }).replace(/\s+/g, ' ').trim();
   };
+
+  // Run fact verifier inline while we have the raw 10-K
+  let _vr = { rate: 0, total: 0, verified: 0 };
+  try {
+    if (r.tenk_raw_for_verify && r.tenk_raw_for_verify.length > 500) {
+      const tempContent = {
+        executiveSummary: execBody, businessOverview: bizBody,
+        thesisSituation: sitBody, thesisComplication: compBody,
+        supportingPoint1: { body: support1Parsed.body || '' },
+        supportingPoint2: { body: support2Parsed.body || '' },
+        supportingPoint3: { body: support3Parsed.body || '' },
+        keyRisks: risksBody, valuationSection: valBody,
+        priceTargetSection: ptBody, catalystsSection: catalystsBody,
+        sotpSection: { body: sotpParsed.body || '' },
+        mgmtSection: { body: mgmtParsed.body || '' },
+        competitiveSection: { body: competitiveParsed.body || '' },
+        financialBridge: bridgeBody,
+      };
+      const vResult = runFactVerifier(tempContent, r.tenk_raw_for_verify);
+      _vr = { rate: vResult.verification_rate, total: vResult.total_claims, verified: vResult.verified };
+      console.log(`[portal][${r.ticker}] Fact check: ${vResult.verified}/${vResult.total_claims} claims verified (${(vResult.verification_rate*100).toFixed(0)}%)`);
+    }
+  } catch (e) {
+    console.error('[portal] fact verifier failed (non-fatal)', e);
+  }
 
   return {
     tagline: (thesisParsed.tagline || `${r.company} — research brief`).replace(/^["']|["']$/g, '').replace(/\.$/, ''),
@@ -654,6 +744,42 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
         rationale: normalizeNumbers(String(d.rationale || '')),
       }))
       .filter((d: any) => d.q),
+    // Fact verification results (computed inline above)
+    verificationRate: _vr.rate,
+    totalClaims: _vr.total,
+    verifiedClaims: _vr.verified,
+
+    // Structured metadata for confidence pipeline + books
+    priceTargetNum: (() => {
+      const sources = [String(consensusParsed?.ourPt || ''), ptBody || '', String(thesisParsed?.bluf || '')];
+      for (const src of sources) {
+        const m = src.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
+        if (m) return parseFloat(m[1]);
+      }
+      return null;
+    })(),
+    impliedUpside: (() => {
+      const sources = [String(consensusParsed?.ourPt || ''), ptBody || '', String(thesisParsed?.bluf || '')];
+      let pt: number | null = null;
+      for (const src of sources) {
+        const m = src.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
+        if (m) { pt = parseFloat(m[1]); break; }
+      }
+      if (pt && r.quote && r.quote.price > 0) return (pt - r.quote.price) / r.quote.price;
+      return null;
+    })(),
+    direction: (() => {
+      const sources = [String(consensusParsed?.ourPt || ''), ptBody || ''];
+      let pt: number | null = null;
+      for (const src of sources) {
+        const m = src.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
+        if (m) { pt = parseFloat(m[1]); break; }
+      }
+      return (pt && r.quote && pt > r.quote.price) ? 'long' as const : 'short' as const;
+    })(),
+    rating: String(consensusParsed?.rating || thesisParsed?.rating || 'BUY'),
+    sector: r.sector || '',
+
     sidenotes: allSidenotes,
     financials: {
       historical: Array.isArray(financialsParsed?.historical) ? financialsParsed.historical.slice(0, 5).map((h: any) => ({

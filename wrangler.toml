@@ -45,9 +45,9 @@ binding = "AI"
 [browser]
 binding = "BROWSER"
 
-# Nightly cron to refresh prices + recompute leaderboard
+# Cron: nightly price refresh + batch queue processing every 3 min
 [triggers]
-crons = ["0 23 * * *"]  # 11 PM UTC = 6 PM EST, after market close
+crons = ["0 23 * * *", "*/3 * * * *"]
 
 # Inline markdown skill files as strings so we can `import skill from '...md'`
 # This is what lets src/lib/ai-brief.ts pull src/skills/equity-brief/SKILL.md
