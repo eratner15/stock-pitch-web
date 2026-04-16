@@ -1560,7 +1560,7 @@ async function generatePortal(env: Env, jobId: string, ticker: string, quote: { 
     }
 
     await setStep('writing', 'Forming thesis · drafting all 6 sections', 1);
-    const content = await writePortalContent(env.AI, research);
+    const content = await writePortalContent(env.AI, research, { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY });
 
     // Fetch peer prices in parallel for the consensus page
     await setStep('writing', 'Pricing peer comps', 2);

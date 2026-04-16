@@ -326,7 +326,8 @@ export interface PortalContent {
 
 export async function writePortalContent(
   ai: any,
-  r: Research
+  r: Research,
+  env?: { ANTHROPIC_API_KEY?: string }
 ): Promise<PortalContent> {
   // Compact research card each call can quote from
   const researchCard = `
@@ -422,7 +423,7 @@ ${researchCard}`;
     console.log(`[portal][${r.ticker}] Financials empty, trying Anthropic API fallback...`);
     try {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
-      const client = new Anthropic({ apiKey: (env as any).ANTHROPIC_API_KEY });
+      const client = new Anthropic({ apiKey: env?.ANTHROPIC_API_KEY || '' });
       const resp = await client.messages.create({
         model: 'claude-sonnet-4-20250514', max_tokens: 1500,
         system: 'Return ONE JSON object, no markdown fence. Every financial number must include a source tag like [10-K].',
@@ -436,7 +437,7 @@ ${researchCard}`;
     console.log(`[portal][${r.ticker}] Consensus empty, trying Anthropic API fallback...`);
     try {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
-      const client = new Anthropic({ apiKey: (env as any).ANTHROPIC_API_KEY });
+      const client = new Anthropic({ apiKey: env?.ANTHROPIC_API_KEY || '' });
       const resp = await client.messages.create({
         model: 'claude-sonnet-4-20250514', max_tokens: 1200,
         system: 'Return ONE JSON object, no markdown fence.',
