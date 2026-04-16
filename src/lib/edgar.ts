@@ -39,9 +39,11 @@ async function loadTickerMap(): Promise<Record<string, { cik: string; name: stri
   }
 }
 
-export async function getCik(ticker: string): Promise<{ cik: string; name: string } | null> {
+export async function getCik(ticker: string | any): Promise<{ cik: string; name: string } | null> {
+  const t = String(ticker || '').toUpperCase().trim();
+  if (!t) return null;
   const map = await loadTickerMap();
-  return map[ticker.toUpperCase()] ?? null;
+  return map[t] ?? null;
 }
 
 export interface FilingInfo {

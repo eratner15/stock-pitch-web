@@ -9,6 +9,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.69",
+    "@anthropic-ai/sdk": "^0.89.0",
     "@cloudflare/ai-chat": "^0.4.4",
     "@cloudflare/puppeteer": "^1.1.0",
     "@cloudflare/think": "^0.2.4",

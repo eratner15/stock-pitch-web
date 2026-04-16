@@ -53,6 +53,7 @@ interface Env {
   AI: any;
   BROWSER: Fetcher;
   ResearchAgent: DurableObjectNamespace;
+  ANTHROPIC_API_KEY: string;
   ADMIN_KEY?: string;
   FMP_API_KEY?: string;
   SESSION_SECRET?: string;
@@ -149,18 +150,15 @@ app.post('/api/agent/research', async (c) => {
   const ticker = sanitizeTicker(String(body.ticker || ''));
   if (!ticker) return c.json({ error: 'ticker required' }, 400);
 
-  const agentId = ticker;
-    const wsUrl = `wss://${new URL(c.req.url).host}/agents/ResearchAgent/${agentId}`;
-    const httpUrl = `https://${new URL(c.req.url).host}/agents/ResearchAgent/${agentId}`;
-
-    return c.json({
-      ok: true,
-      ticker,
-      agent_id: agentId,
-      websocket_url: wsUrl,
-      http_url: httpUrl,
-      instructions: 'Connect via WebSocket to interact with the Research Agent. Send a message like: "Research META and produce a full investment memo."',
-    });
+  const doId = c.env.ResearchAgent.idFromName(ticker);
+  const stub = c.env.ResearchAgent.get(doId);
+  const doResp = await stub.fetch('http://agent/research', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker }),
+  });
+  const result = await doResp.json();
+  return c.json(result as any, doResp.ok ? 200 : 500);
 });
 
 // ==========================================================================
