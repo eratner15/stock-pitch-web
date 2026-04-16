@@ -602,7 +602,10 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
   ),
   ]);
   // Phase 2+3 run in parallel (thesis spine already resolved in Phase 1)
-  const [resolvedBatch1, resolvedBatch2, resolvedBatch3] = await Promise.all([batch1, batch2, batch3]);
+  // Run batch1 + batch3 in parallel, then batch2 (heaviest) sequentially
+  // to avoid Workers AI concurrency drops
+  const [resolvedBatch1, resolvedBatch3] = await Promise.all([batch1, batch3]);
+  const resolvedBatch2 = await batch2;
   const [rawExec, rawBiz, rawSit, rawComp, rawVal, rawPt] = resolvedBatch1;
   const [rawA2, rawA3, rawA4risks, rawA4cats, rawA5, rawA6, rawMgmt, rawBridge, rawA8] = resolvedBatch2;
   const [rawD, rawE] = resolvedBatch3;

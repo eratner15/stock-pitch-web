@@ -59,11 +59,20 @@ export interface FilingInfo {
  * List recent 10-K / 10-Q / 8-K filings for a ticker, newest first.
  */
 export async function getRecentFilings(
-  ticker: string,
+  tickerOrCik: string,
   limit = 40
 ): Promise<FilingInfo[]> {
-  const entry = await getCik(ticker);
-  if (!entry) return [];
+  // Accept either a ticker symbol or a raw CIK number
+  let cik: string;
+  let entry: { cik: string; name: string } | null;
+  if (/^\d+$/.test(tickerOrCik)) {
+    cik = tickerOrCik.padStart(10, '0');
+    entry = { cik, name: '' };
+  } else {
+    entry = await getCik(tickerOrCik);
+    if (!entry) return [];
+    cik = entry.cik;
+  }
 
   try {
     const res = await fetch(
@@ -219,32 +228,42 @@ export function extractRiskFactors(text: string): string {
  * the 40 most recent filings because active companies push 8-Ks regularly
  * and the last 10-K can easily be >10 filings back.
  */
-export async function fetchLatest10K(ticker: string): Promise<{
+export async function fetchLatest10K(tickerOrCik: string): Promise<{
   filing: FilingInfo | null;
+  url: string;
+  date: string;
   mda: string;
   risks: string;
   rawText: string;
+  fullText: string;
 }> {
-  const filings = await getRecentFilings(ticker, 40);
+  const filings = await getRecentFilings(tickerOrCik, 40);
   const latest10K = filings.find(f => f.form === '10-K') ?? filings.find(f => f.form === '20-F');
-  if (!latest10K) return { filing: null, mda: '', risks: '', rawText: '' };
+  if (!latest10K) return { filing: null, url: '', date: '', mda: '', risks: '', rawText: '', fullText: '' };
 
   const rawText = await fetchFilingText(latest10K.documentUrl);
   return {
     filing: latest10K,
+    url: latest10K.documentUrl,
+    date: latest10K.filingDate,
     mda: extractMDA(rawText),
     risks: extractRiskFactors(rawText),
     rawText,
+    fullText: rawText,
   };
 }
 
-export async function fetchLatest10Q(ticker: string): Promise<{
+export async function fetchLatest10Q(tickerOrCik: string): Promise<{
   filing: FilingInfo | null;
+  url: string;
+  date: string;
   text: string;
 }> {
-  const filings = await getRecentFilings(ticker, 40);
+  const filings = await getRecentFilings(tickerOrCik, 40);
   const latest10Q = filings.find(f => f.form === '10-Q');
-  if (!latest10Q) return { filing: null, text: '' };
+  if (!latest10Q) return { filing: null, url: '', date: '', text: '' };
   const text = await fetchFilingText(latest10Q.documentUrl);
-  return { filing: latest10Q, text };
+  return { filing: latest10Q, url: latest10Q.documentUrl, date: latest10Q.filingDate, text };
 }
+
+// Old fetchLatest10Q removed — replaced by the version above that returns url+date

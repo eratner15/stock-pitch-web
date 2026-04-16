@@ -54,6 +54,7 @@ interface Env {
   BROWSER: Fetcher;
   ResearchAgent: DurableObjectNamespace;
   ANTHROPIC_API_KEY: string;
+  OPENAI_API_KEY: string;
   ADMIN_KEY?: string;
   FMP_API_KEY?: string;
   SESSION_SECRET?: string;
