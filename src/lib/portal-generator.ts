@@ -448,9 +448,43 @@ ${researchCard}`;
     } catch (e) { console.error(`[portal][${r.ticker}] Anthropic consensus fallback failed:`, e); }
   }
   const thesisParsed = parsePortalJson(rawThesisSpine);
-  const financialsParsed = parsePortalJson(finalFinancials);
-  const consensusParsed = parsePortalJson(finalConsensus);
-  console.log(`[portal][${r.ticker}] Phase 1 parsed: hist=${(financialsParsed.historical||[]).length} proj=${(financialsParsed.projected||[]).length} peers=${(consensusParsed.peerTickers||[]).length} pt=${consensusParsed.ourPt||'none'}`);
+  let financialsParsed = parsePortalJson(finalFinancials);
+  let consensusParsed = parsePortalJson(finalConsensus);
+
+  // If parsed financials has no rows, the JSON was bad — try Anthropic
+  if (!(financialsParsed.historical?.length > 0) && env?.ANTHROPIC_API_KEY) {
+    console.log(`[portal][${r.ticker}] Financials parsed empty (raw=${(finalFinancials||'').length}c), Anthropic fallback...`);
+    try {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      const resp = await client.messages.create({
+        model: 'claude-sonnet-4-20250514', max_tokens: 1500,
+        system: 'Return ONE JSON object. No markdown fence. Every number with [10-K] tag.',
+        messages: [{ role: 'user', content: `Produce FINANCIALS JSON for ${r.ticker} (${r.company}). Price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"historical":[{"year":"FY23","revenue":"$X.XB","operatingIncome":"$X.XB","eps":"$X.XX"}],"projected":[{"year":"FY26E","revenue":"$X.XB","ebitdaMargin":"X%","eps":"$X.XX"}],"keyMetrics":[{"label":"Metric","value":"X","source":"[10-K]"}],"dcfNarrative":"80 words"}\n\n3 historical, 3 projected, 4-6 keyMetrics.\n\n10-K:\n${r.mda_excerpt.slice(0, 8000)}` }],
+      });
+      const text = resp.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
+      financialsParsed = parsePortalJson(text);
+      console.log(`[portal][${r.ticker}] Anthropic financials: hist=${financialsParsed.historical?.length} proj=${financialsParsed.projected?.length}`);
+    } catch (e) { console.error(`[portal][${r.ticker}] Anthropic financials failed:`, e); }
+  }
+
+  if (!(consensusParsed.peerTickers?.length > 0) && env?.ANTHROPIC_API_KEY) {
+    console.log(`[portal][${r.ticker}] Consensus parsed empty, Anthropic fallback...`);
+    try {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+      const resp = await client.messages.create({
+        model: 'claude-sonnet-4-20250514', max_tokens: 1200,
+        system: 'Return ONE JSON object. No markdown fence.',
+        messages: [{ role: 'user', content: `Produce CONSENSUS JSON for ${r.ticker} (${r.company}). Price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"streetView":"60 words [Consensus]","peerTickers":["T1","T2"],"peerNote":"80 words","ourPt":"$XXX — Y% upside","ptMethodology":"80 words"}\n\n4-6 peers.\n\n10-K:\n${r.mda_excerpt.slice(0, 5000)}` }],
+      });
+      const text = resp.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
+      consensusParsed = parsePortalJson(text);
+      console.log(`[portal][${r.ticker}] Anthropic consensus: peers=${consensusParsed.peerTickers?.length} pt=${consensusParsed.ourPt}`);
+    } catch (e) { console.error(`[portal][${r.ticker}] Anthropic consensus failed:`, e); }
+  }
+
+  console.log(`[portal][${r.ticker}] Phase 1 final: hist=${(financialsParsed.historical||[]).length} proj=${(financialsParsed.projected||[]).length} peers=${(consensusParsed.peerTickers||[]).length} pt=${consensusParsed.ourPt||'none'}`);
   const foundationContext = `
 FOUNDATION — reference these in your section for consistency:
 THESIS: ${thesisParsed.tagline || ''} | BLUF: ${(thesisParsed.bluf || '').slice(0, 200)}
