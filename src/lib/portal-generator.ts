@@ -415,16 +415,36 @@ ${researchCard}`;
 
   // Parse foundation results → build context block for Phase 2
   console.log(`[portal][${r.ticker}] Phase 1 raw: thesis=${(rawThesisSpine||'').length}c financials=${(rawFinancials||'').length}c consensus=${(rawConsensus||'').length}c`);
-  // Retry empty Phase 1 calls individually (most common failure mode)
+  // Retry empty Phase 1 JSON via Anthropic API (Workers AI unreliable for structured JSON)
   let finalFinancials = rawFinancials;
   let finalConsensus = rawConsensus;
   if ((rawFinancials||'').length < 50) {
-    console.log(`[portal][${r.ticker}] Financials empty (${(rawFinancials||'').length}c), retrying...`);
-    finalFinancials = await runModel(ai, PRIMARY_MODEL, sysJson(`{"historical":[{"year":"FY23","revenue":"$X.XB","operatingIncome":"$X.XB","eps":"$X.XX"}],"projected":[{"year":"FY26E","revenue":"$X.XB","ebitdaMargin":"X%","eps":"$X.XX"}],"keyMetrics":[{"label":"Metric","value":"X","source":"[10-K]"}],"dcfNarrative":"80 words on WACC + terminal growth"}`), `Produce FINANCIALS JSON for ${r.ticker}. 3 historical, 3 projected, 4-6 keyMetrics.\n\nCompany: ${r.company}\nPrice: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}\n10-K MD&A excerpt:\n${r.mda_excerpt.slice(0, 8000)}`, { max_tokens: 1400, temperature: 0.3, timeoutMs: 50_000 });
+    console.log(`[portal][${r.ticker}] Financials empty, trying Anthropic API fallback...`);
+    try {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: (env as any).ANTHROPIC_API_KEY });
+      const resp = await client.messages.create({
+        model: 'claude-sonnet-4-20250514', max_tokens: 1500,
+        system: 'Return ONE JSON object, no markdown fence. Every financial number must include a source tag like [10-K].',
+        messages: [{ role: 'user', content: `Produce FINANCIALS JSON for ${r.ticker} (${r.company}). Current price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"historical":[{"year":"FY23","revenue":"$X.XB","operatingIncome":"$X.XB","eps":"$X.XX"}],"projected":[{"year":"FY26E","revenue":"$X.XB","ebitdaMargin":"X%","eps":"$X.XX"}],"keyMetrics":[{"label":"Metric","value":"X","source":"[10-K]"}],"dcfNarrative":"80 words"}\n\n3 historical rows, 3 projected, 4-6 keyMetrics.\n\n10-K excerpt:\n${r.mda_excerpt.slice(0, 8000)}` }],
+      });
+      const text = resp.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join('');
+      if (text.length > 50) { finalFinancials = text; console.log(`[portal][${r.ticker}] Financials recovered via Anthropic (${text.length}c)`); }
+    } catch (e) { console.error(`[portal][${r.ticker}] Anthropic financials fallback failed:`, e); }
   }
   if ((rawConsensus||'').length < 50) {
-    console.log(`[portal][${r.ticker}] Consensus empty (${(rawConsensus||'').length}c), retrying...`);
-    finalConsensus = await runModel(ai, PRIMARY_MODEL, sysJson(`{"streetView":"60 words with [Consensus] tags","peerTickers":["TICKER1","TICKER2"],"peerNote":"80 words","ourPt":"$XXX — Y% upside","ptMethodology":"80 words"}`), `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}. 4-6 peer tickers.\n\nCompany: ${r.company}\n10-K excerpt:\n${r.mda_excerpt.slice(0, 5000)}`, { max_tokens: 1200, temperature: 0.5, timeoutMs: 50_000 });
+    console.log(`[portal][${r.ticker}] Consensus empty, trying Anthropic API fallback...`);
+    try {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: (env as any).ANTHROPIC_API_KEY });
+      const resp = await client.messages.create({
+        model: 'claude-sonnet-4-20250514', max_tokens: 1200,
+        system: 'Return ONE JSON object, no markdown fence.',
+        messages: [{ role: 'user', content: `Produce CONSENSUS JSON for ${r.ticker} (${r.company}). Current price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"streetView":"60 words with [Consensus] tags","peerTickers":["TICKER1"],"peerNote":"80 words","ourPt":"$XXX — Y% upside","ptMethodology":"80 words"}\n\n4-6 peer tickers.\n\n10-K excerpt:\n${r.mda_excerpt.slice(0, 5000)}` }],
+      });
+      const text = resp.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join('');
+      if (text.length > 50) { finalConsensus = text; console.log(`[portal][${r.ticker}] Consensus recovered via Anthropic (${text.length}c)`); }
+    } catch (e) { console.error(`[portal][${r.ticker}] Anthropic consensus fallback failed:`, e); }
   }
   const thesisParsed = parsePortalJson(rawThesisSpine);
   const financialsParsed = parsePortalJson(finalFinancials);
