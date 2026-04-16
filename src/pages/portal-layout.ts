@@ -144,7 +144,48 @@ p strong{color:var(--heading)}
 .page-subtitle{font-family:'Inter',sans-serif;font-size:14px;color:var(--text-muted);font-weight:500;margin-bottom:4px}
 .page-tagline{font-family:'Merriweather',serif;font-style:italic;font-size:18px;color:var(--text);margin-top:14px;line-height:1.55}
 
-.kicker{font-family:'Inter',sans-serif;font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-top:40px;margin-bottom:8px}
+/* ── Memo section formatting ── */
+.memo-page section{padding:36px 0 28px;border-top:1px solid var(--border);margin-top:8px}
+.memo-page section:first-of-type{border-top:none;margin-top:0}
+.memo-page h2{font-size:24px;line-height:1.25;margin-bottom:18px;color:var(--heading)}
+.memo-page p{max-width:680px}
+.memo-page .memo-header{padding-bottom:28px;border-bottom:2px solid var(--heading);margin-bottom:8px}
+.memo-page .memo-tagline{font-family:'Merriweather',serif;font-style:italic;font-size:19px;color:var(--text-muted);margin-top:8px;line-height:1.5}
+.memo-page .memo-rating-strip{display:flex;gap:0;margin-top:24px;border:1px solid var(--border);background:var(--surface)}
+.memo-page .memo-rating-strip .rs{flex:1;padding:16px 18px;border-right:1px solid var(--border)}
+.memo-page .memo-rating-strip .rs:last-child{border-right:none}
+.memo-page .memo-rating-strip .lbl{font-family:'Inter',sans-serif;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted);font-weight:600}
+.memo-page .memo-rating-strip .val{font-size:22px;font-weight:800;color:var(--heading);margin-top:4px;font-family:'Inter',sans-serif}
+.memo-page .memo-rating-strip .val.gold{color:var(--gold-deep)}
+.memo-toc{background:var(--surface);border:1px solid var(--border);padding:20px 28px;margin:24px 0}
+.memo-toc strong{font-family:'Inter',sans-serif;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted)}
+.memo-toc ol{columns:2;column-gap:32px;margin-top:12px;padding-left:20px}
+.memo-toc li{font-family:'Inter',sans-serif;font-size:13px;line-height:2;color:var(--text)}
+.memo-toc a{color:var(--steel);text-decoration:none;border-bottom:1px solid transparent}
+.memo-toc a:hover{border-bottom-color:var(--steel)}
+.bull-bear{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:20px 0}
+.bb-card{padding:24px;border:1px solid var(--border)}
+.bb-card.bull{border-left:4px solid var(--green);background:rgba(26,122,58,0.03)}
+.bb-card.bear{border-left:4px solid var(--red);background:rgba(192,57,43,0.03)}
+.bb-card h3{font-family:'Inter',sans-serif;font-size:14px;letter-spacing:2px;text-transform:uppercase;margin-bottom:14px}
+.bb-card.bull h3{color:var(--green)}
+.bb-card.bear h3{color:var(--red)}
+.bb-card ul{padding-left:18px;margin:0}
+.bb-card li{font-size:14.5px;line-height:1.65;margin-bottom:8px;color:var(--text)}
+.memo-sidenote{float:right;clear:right;width:200px;margin:0 -240px 16px 20px;padding:12px 14px;background:var(--surface);border-left:2px solid var(--gold);font-family:'Inter',sans-serif;font-size:12px;line-height:1.55;color:var(--text-muted)}
+.diligence{display:grid;gap:16px}
+.dq{background:var(--surface);padding:18px 22px;border-left:3px solid var(--steel)}
+.dq-q{font-family:'Merriweather',serif;font-weight:700;font-size:15px;color:var(--heading);margin-bottom:6px}
+.dq-why{font-family:'Inter',sans-serif;font-size:13px;color:var(--text-muted);font-style:italic}
+.disclaimer{font-family:'Inter',sans-serif;font-size:12px;color:var(--text-muted);line-height:1.65;margin-top:40px;padding-top:20px;border-top:1px solid var(--border);max-width:680px}
+@media(max-width:900px){
+  .memo-sidenote{float:none;width:auto;margin:12px 0;border-left:2px solid var(--gold)}
+  .bull-bear{grid-template-columns:1fr}
+  .memo-toc ol{columns:1}
+  .memo-page .memo-rating-strip{flex-wrap:wrap}
+  .memo-page .memo-rating-strip .rs{min-width:45%;flex:1 1 45%}
+}
+.kicker{font-family:'Inter',sans-serif;font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:8px}
 
 .source-tag{display:inline-block;font-family:'Inter',sans-serif;font-size:10px;color:var(--gold);font-weight:600;letter-spacing:0.3px;vertical-align:super;margin-left:2px}
 .section-sub{font-family:'Inter',sans-serif;font-size:18px;font-weight:700;color:var(--heading);margin:28px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border-light)}

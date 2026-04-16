@@ -15,10 +15,13 @@ routes = [
   { pattern = "research.levincap.com/stock-pitch", zone_name = "levincap.com" },
   { pattern = "research.levincap.com/stock-pitch/*", zone_name = "levincap.com" },
   # Research Desk — the full research workflow platform
+  # Canonical: research.levincap.com/desk (and levincap.com/research as alias)
   { pattern = "levincap.com/research", zone_name = "levincap.com" },
   { pattern = "levincap.com/research/*", zone_name = "levincap.com" },
   { pattern = "www.levincap.com/research", zone_name = "levincap.com" },
-  { pattern = "www.levincap.com/research/*", zone_name = "levincap.com" }
+  { pattern = "www.levincap.com/research/*", zone_name = "levincap.com" },
+  { pattern = "research.levincap.com/research", zone_name = "levincap.com" },
+  { pattern = "research.levincap.com/research/*", zone_name = "levincap.com" }
 ]
 workers_dev = true
 

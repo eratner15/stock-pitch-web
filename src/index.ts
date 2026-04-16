@@ -75,6 +75,9 @@ interface Env {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_PRO?: string;
   STRIPE_PRICE_WHITEGLOVE?: string;
+  // LiquidityBook (Phase 3)
+  LIQUIDITYBOOK_CLIENT_ID?: string;
+  LIQUIDITYBOOK_CLIENT_SECRET?: string;
   ENVIRONMENT: string;
 }
 
@@ -229,7 +232,7 @@ app.get('/research/:workflow', (c) => {
 });
 
 // API: Create a workflow run (returns runId)
-app.post('/api/research/run', async (c) => {
+app.post('/research/api/run', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const body = await c.req.json().catch(() => ({} as any));
@@ -246,7 +249,7 @@ app.post('/api/research/run', async (c) => {
 });
 
 // API: Stream a workflow run via SSE (connects to WorkflowAgent DO)
-app.post('/api/research/run/:id/stream', async (c) => {
+app.post('/research/api/run/:id/stream', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const runId = c.req.param('id');
@@ -277,7 +280,7 @@ app.post('/api/research/run/:id/stream', async (c) => {
 });
 
 // API: Poll run status
-app.get('/api/research/run/:id', async (c) => {
+app.get('/research/api/run/:id', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const run = await c.env.DB.prepare(
@@ -286,6 +289,26 @@ app.get('/api/research/run/:id', async (c) => {
   ).bind(c.req.param('id'), user.id).first();
   if (!run) return c.json({ error: 'Not found' }, 404);
   return c.json(run);
+});
+
+// API: Get cached LB positions
+app.get('/research/api/positions', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  const { results } = await c.env.DB.prepare(
+    'SELECT * FROM lb_positions_cache ORDER BY market_value DESC LIMIT 100'
+  ).all();
+  return c.json({ positions: results || [], count: (results || []).length });
+});
+
+// API: Force LB sync (admin only)
+app.post('/research/api/lb-sync', async (c) => {
+  const key = c.req.header('x-admin-key') || c.req.query('key');
+  if (key !== c.env.ADMIN_KEY) return c.json({ error: 'Unauthorized' }, 401);
+  if (!c.env.LIQUIDITYBOOK_CLIENT_ID) return c.json({ error: 'LB not configured' }, 400);
+  const { syncLBPositions } = await import('./lib/lb-client');
+  const count = await syncLBPositions(c.env as any);
+  return c.json({ ok: true, synced: count });
 });
 
 // ==========================================================================
@@ -1886,6 +1909,22 @@ export default {
       const slugs = ['top10'];
       await Promise.all(slugs.map(s => env.REQUESTS.delete(`og:p:${s}`)));
     } catch (e) {}
+
+    // Step 2b: sync LiquidityBook positions (market hours only, every 15 min cron)
+    if (env.LIQUIDITYBOOK_CLIENT_ID && env.LIQUIDITYBOOK_CLIENT_SECRET) {
+      const now = new Date();
+      const etHour = now.getUTCHours() - 4; // rough ET offset
+      const isMarketHours = etHour >= 9 && etHour <= 16 && now.getUTCDay() >= 1 && now.getUTCDay() <= 5;
+      if (isMarketHours) {
+        try {
+          const { syncLBPositions } = await import('./lib/lb-client');
+          const count = await syncLBPositions(env as any);
+          console.log(`[cron] Synced ${count} LB positions`);
+        } catch (err) {
+          console.error('[cron] LB sync error:', err);
+        }
+      }
+    }
 
     // Step 3: process next ticker in batch generation queue
     try {

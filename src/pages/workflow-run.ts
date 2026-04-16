@@ -233,7 +233,7 @@ async function startRun(e) {
 
   try {
     // Create run record first
-    const createRes = await fetch(MOUNT + '/api/research/run', {
+    const createRes = await fetch(MOUNT + '/research/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
@@ -246,7 +246,7 @@ async function startRun(e) {
     currentRunId = createData.runId;
 
     // Connect SSE stream
-    const streamRes = await fetch(MOUNT + '/api/research/run/' + currentRunId + '/stream', {
+    const streamRes = await fetch(MOUNT + '/research/api/run/' + currentRunId + '/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
