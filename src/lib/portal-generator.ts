@@ -32,7 +32,8 @@ import { verifyPortal as runFactVerifier } from './improve/fact-verify';
 // - NUMBERS: structured financial JSON (Gemma 4 26B, reasoning model, better with numbers)
 // - FAST: low-stakes structured output like deck slides + diligence Qs (Llama 8B, fast)
 const PRIMARY_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const NUMBERS_MODEL = '@cf/google/gemma-4-12b-it';
+// Gemma 4 12B doesn't exist on Workers AI — use PRIMARY for structured JSON too
+const NUMBERS_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const FAST_MODEL = '@cf/meta/llama-3.1-8b-instruct';
 
 // ---------------------------------------------------------------------------

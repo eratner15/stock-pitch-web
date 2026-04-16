@@ -87,9 +87,23 @@ export function portalMarkdown(md: string, inline = false): string {
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|\s)\*([^*]+)\*(\s|$)/g, '$1<em>$2</em>$3');
   if (inline) return out.trim();
+  // Convert markdown headers to HTML
+  out = out.replace(/^#{3}\s+(.+)$/gm, '<h4 class="section-sub">$1</h4>');
+  out = out.replace(/^#{2}\s+(.+)$/gm, '<h3 class="section-sub">$1</h3>');
+  out = out.replace(/^#{1}\s+(.+)$/gm, '<h3 class="section-sub">$1</h3>');
+  // Convert bullet lists
+  out = out.replace(/^[-•]\s+(.+)$/gm, '<li>$1</li>');
+  out = out.replace(/(<li>.*<\/li>\n?)+/g, (m) => `<ul class="memo-list">${m}</ul>`);
+  // Paragraphs — split on double newline but preserve headers and lists
   return out
     .split(/\n{2,}/)
-    .map(p => `<p>${p.trim().replace(/\n/g, '<br>')}</p>`)
+    .map(p => {
+      const t = p.trim();
+      if (!t) return '';
+      if (t.startsWith('<h') || t.startsWith('<ul') || t.startsWith('<li')) return t;
+      return `<p>${t.replace(/\n/g, '<br>')}</p>`;
+    })
+    .filter(Boolean)
     .join('\n');
 }
 
@@ -133,6 +147,8 @@ p strong{color:var(--heading)}
 .kicker{font-family:'Inter',sans-serif;font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;font-weight:700;margin-top:40px;margin-bottom:8px}
 
 .source-tag{display:inline-block;font-family:'Inter',sans-serif;font-size:10px;color:var(--gold);font-weight:600;letter-spacing:0.3px;vertical-align:super;margin-left:2px}
+.section-sub{font-family:'Inter',sans-serif;font-size:18px;font-weight:700;color:var(--heading);margin:28px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border-light)}
+.memo-list{margin:12px 0 12px 24px;list-style:disc}.memo-list li{margin-bottom:6px;line-height:1.65}
 
 table.data{width:100%;border-collapse:collapse;font-family:'Inter',sans-serif;font-size:13px;margin:18px 0 28px}
 table.data th{text-align:left;padding:10px 12px;border-bottom:2px solid var(--border);font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);font-weight:700}
