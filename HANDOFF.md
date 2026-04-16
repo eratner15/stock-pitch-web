@@ -107,27 +107,24 @@ Optional: `LIQUIDITYBOOK_CLIENT_ID`, `LIQUIDITYBOOK_CLIENT_SECRET` (for portfoli
 - Workers AI 24K token limit constrains portal generation context
 - Think + external LLM providers broken (Zod v4 bug, cloudflare/agents#1322)
 
-### Taxonomy Decision Needed
-Currently:
-- research.levincap.com/ → Ratlinks magazine + static portals (lcs-portfolio-intel worker)
-- research.levincap.com/research → Research Desk (stock-pitch-web worker)
-- levincap.com/research → Research Desk (stock-pitch-web worker)
+### Taxonomy (DONE as of 2026-04-16)
+- **research.levincap.com/** → 302 to /research → Research Desk (PRIMARY)
+- **research.levincap.com/research** → Research Desk dashboard
+- **research.levincap.com/digest** → Ratlinks magazine (was at root)
+- **research.levincap.com/{ticker}** → static portals (AMZN, KMB, etc.)
+- **levincap.com/research** → Research Desk (alias, also works)
+- **levincap.com/stock-pitch** → Stock Pitch builder (unchanged)
 
-Desired (per Evan):
-- research.levincap.com → Research Desk (primary URL)
-- research.levincap.com/digest → Magazine (moved from root)
-- levincap.com/research → redirect to research.levincap.com
-
-This requires updating lcs-portfolio-intel to move the magazine from / to /digest, and updating stock-pitch-web to serve research.levincap.com root.
+The root redirect and /digest route live in lcs-portfolio-intel (src/index.ts ~line 5860). Not in git — deployed directly via wrangler.
 
 ## What to Work on Next
 
-1. **Taxonomy swap** — make research.levincap.com the primary Research Desk URL, move magazine to /digest
-2. **Test end-to-end workflow** — log in, run Stock Screen for AAPL, verify SSE streaming + output
-3. **Set LB secrets** — `wrangler secret put LIQUIDITYBOOK_CLIENT_ID` and `LIQUIDITYBOOK_CLIENT_SECRET`
-4. **History page** — /research/history with search/filter by ticker, workflow, date
-5. **Portal generation from workflow output** — "Generate Portal" button chains to existing pipeline
-6. **Cross-workflow linking** — Coverage report can reference prior DCF/Comps for same ticker
+1. **Test end-to-end workflow** — log in, run Stock Screen for AAPL, verify SSE streaming + output
+2. **Set LB secrets** — `wrangler secret put LIQUIDITYBOOK_CLIENT_ID` and `LIQUIDITYBOOK_CLIENT_SECRET`
+3. **History page** — /research/history with search/filter by ticker, workflow, date
+4. **Portal generation from workflow output** — "Generate Portal" button chains to existing pipeline
+5. **Cross-workflow linking** — Coverage report can reference prior DCF/Comps for same ticker
+6. **Tier gating** — free = 3 runs/month, pro = unlimited (wire to existing Stripe billing)
 
 ## Quick Commands
 
