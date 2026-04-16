@@ -19,7 +19,7 @@
 
 import skillMarkdown from '../skills/stock-pitch/SKILL.md';
 
-import { fetchPrice, type PriceQuote } from './prices';
+import { fetchPrice, fetchPriceHistory, type PriceQuote } from './prices';
 import {
   getCik,
   fetchLatest10K,
@@ -43,6 +43,7 @@ export interface Research {
   company: string;
   cik: string | null;
   quote: PriceQuote | null;
+  price_history: Array<{ t: number; c: number }>; // 1Y daily closes
   filing_10k_url: string | null;
   filing_10k_date: string | null;
   filing_10q_url: string | null;
@@ -50,9 +51,11 @@ export interface Research {
   mda_excerpt: string;       // capped for prompt size
   risks_excerpt: string;
   tenq_excerpt: string;
-  thesis: string | null;     // user-provided if any
+  tenk_raw_for_verify: string; // full 10-K text for fact verifier, not in prompts
+  thesis: string | null;
   direction: 'long' | 'short' | null;
   price_target: number | null;
+  sector: string;              // detected sector for template routing
 }
 
 export async function collectResearch(args: {
@@ -64,35 +67,72 @@ export async function collectResearch(args: {
   const t = args.ticker.toUpperCase();
 
   // Parallel data pulls
-  const [cik, quote, tenK, tenQ] = await Promise.all([
+  const [cik, quote, priceHistory, tenK, tenQ] = await Promise.all([
     getCik(t),
     fetchPrice(t),
+    fetchPriceHistory(t),
     fetchLatest10K(t),
     fetchLatest10Q(t),
   ]);
+
+  const sector = detectSector(tenK.rawText || '', quote?.company || cik?.name || t);
 
   return {
     ticker: t,
     company: quote?.company ?? cik?.name ?? t,
     cik: cik?.cik ?? null,
     quote,
+    price_history: priceHistory,
     filing_10k_url: tenK.filing?.documentUrl ?? null,
     filing_10k_date: tenK.filing?.filingDate ?? null,
     filing_10q_url: tenQ.filing?.documentUrl ?? null,
     filing_10q_date: tenQ.filing?.filingDate ?? null,
-    // Aggressive cap: ~10K chars total excerpt. Workers AI models throttle
-    // heavily on large contexts; tighter is faster and the model only
-    // needs signal, not full filings.
-    // Big excerpts — AMZN-caliber memos cite dense specifics. 10-K MD&A is
-    // the main signal source; Item 1A Risk Factors feeds the risks section;
-    // 10-Q captures fresh guidance + quarterly commentary.
     mda_excerpt: tenK.mda.slice(0, 55000),
     risks_excerpt: tenK.risks.slice(0, 25000),
     tenq_excerpt: tenQ.text.slice(0, 15000),
+    // Keep full raw 10-K for the fact verifier pass. Not passed into prompts.
+    tenk_raw_for_verify: tenK.rawText || '',
     thesis: args.thesis ?? null,
     direction: args.direction ?? null,
     price_target: args.price_target ?? null,
+    sector,
   };
+}
+
+// --------------------------------------------------------------------------
+// Sector detection + guidance — routes per-sector prompt hints
+// --------------------------------------------------------------------------
+export type Sector =
+  | 'REIT' | 'BANK' | 'INSURANCE' | 'ENERGY' | 'SAAS'
+  | 'BIOTECH' | 'ASSET_MANAGER' | 'CONSUMER' | 'INDUSTRIAL' | 'GENERIC';
+
+export function detectSector(tenKText: string, companyName: string): Sector {
+  const text = (tenKText + ' ' + companyName).toLowerCase();
+  if (/real estate investment trust|we elected? to be taxed as a reit|funds from operations|ffo per share|nav per share/.test(text)) return 'REIT';
+  if (/bank holding company|federally insured|net interest margin|tier 1 capital|cet1|common equity tier/.test(text)) return 'BANK';
+  if (/insurance company|combined ratio|loss ratio|reinsurance|underwriting result|gross premium/.test(text)) return 'INSURANCE';
+  if (/oil and gas|upstream|hydrocarbon reserves|barrels of oil equivalent|natural gas producer|refining margin/.test(text)) return 'ENERGY';
+  if (/annual recurring revenue|net revenue retention|saas|cloud subscription|daily active users/.test(text)) return 'SAAS';
+  if (/clinical trial|phase [i1]{1,3}\b|food and drug administration|biosimilar|orphan drug|pdufa/.test(text)) return 'BIOTECH';
+  if (/assets under management|carried interest|fee-related earnings|distributable earnings|management fees|performance fees/.test(text)) return 'ASSET_MANAGER';
+  if (/consumer products|direct-to-consumer|brand portfolio|same-store sales|comparable store sales/.test(text)) return 'CONSUMER';
+  if (/manufacturing operations|original equipment manufacturer|book-to-bill|aftermarket/.test(text)) return 'INDUSTRIAL';
+  return 'GENERIC';
+}
+
+export function sectorGuidance(sector: Sector): string {
+  switch (sector) {
+    case 'REIT': return `This is a REIT. Use NAV/share, AFFO/FFO per share, cap rate, debt/EBITDA, and WALT. Property-level NOI > accounting EPS.`;
+    case 'BANK': return `This is a bank. Use tangible book value per share, NIM, efficiency ratio, CET1, NPL ratio. Tangible book growth > EPS.`;
+    case 'INSURANCE': return `This is an insurer. Use combined ratio, loss ratio, book value per share, investment-portfolio yield. Underwriting vs investment income separately.`;
+    case 'ENERGY': return `This is an energy producer. Use reserves, production, full-cycle break-even, F&D costs, hedge book. Reserve replacement > headline EPS.`;
+    case 'SAAS': return `This is SaaS/cloud. Use ARR, NRR, GRR, CAC payback, Rule of 40, FCF margin. Reference ARR and LTM revenue both.`;
+    case 'BIOTECH': return `This is a biotech. Use pipeline asset-by-asset: phase, PDUFA dates, probability of success, risk-adjusted peak sales. Cash runway > EPS.`;
+    case 'ASSET_MANAGER': return `This is an alt asset manager. Use AUM, FRE, DE, carried-interest realizations, dry powder. FRE multiple separate from carry multiple.`;
+    case 'CONSUMER': return `This is consumer / retail. Use organic revenue growth, same-store-sales, gross margin trajectory, A&P spend as % revenue, inventory days.`;
+    case 'INDUSTRIAL': return `This is industrial. Use book-to-bill, backlog (months of revenue), aftermarket mix, operating leverage, order intake.`;
+    default: return `Use sector-appropriate metrics — recurring revenue → ARR/NRR, capital-intensive → ROIC, commodity-exposed → name the commodity.`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -295,9 +335,11 @@ ${r.risks_excerpt || '(not available)'}
 ${r.tenq_excerpt || '(not available)'}
 `.trim();
 
-  // Split into 5 sequential JSON calls. Each is small enough for Gemma
-  // to complete reliably in <15s. Total ~60s for the whole portal.
-  const sysJson = (schemaHint: string) => `${VOICE_SYSTEM}
+  // Voice + sector guidance — every call gets the sector hint so the
+  // prompts nudge toward REIT / bank / SaaS / commodity / etc. frameworks.
+  const sectorHint = sectorGuidance(r.sector as Sector);
+  const voiceWithSector = voiceWithSector + `\n\nSECTOR CONTEXT: ${sectorHint}`;
+  const sysJson = (schemaHint: string) => `${voiceWithSector}
 
 Return ONE JSON object, nothing else — no preamble, no markdown fence.
 Schema:
@@ -331,7 +373,7 @@ ${researchCard}`;
     // Plain markdown for each prose section
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT: 500-600 words of executive-summary prose. No heading. 4+ specific dollar amounts, 3+ growth rates, 2+ specific dates. 2 sidenote markers [[SIDENOTE: ...]]. Dense source tags.`,
       `Write the EXECUTIVE SUMMARY for ${r.ticker}. Setup → mispricing → PT → catalyst timeline. 500-600 words.\n\n${userBase}`,
@@ -339,7 +381,7 @@ OUTPUT: 500-600 words of executive-summary prose. No heading. 4+ specific dollar
     ),
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT: **write 800-1000 words — do NOT stop before 800 words**. No heading. Five paragraphs minimum:
   P1: What the business does + total revenue + employee count + geographic footprint
@@ -353,7 +395,7 @@ OUTPUT: **write 800-1000 words — do NOT stop before 800 words**. No heading. F
     ),
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT: 500-600 words on what the MARKET currently prices. No heading. Cover: consensus EPS path year-by-year, current P/E or EV/EBITDA or EV/Sales, stock performance 1Y/3Y/5Y, analyst rating mix (Buy/Hold/Sell count), narrative the Street has settled on. Tag [Consensus]/[Market]/[Estimated]. 1-2 sidenotes.`,
       `Write THE SITUATION section for ${r.ticker}.\n\n${userBase}`,
@@ -361,7 +403,7 @@ OUTPUT: 500-600 words on what the MARKET currently prices. No heading. Cover: co
     ),
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT: 500-600 words on what's MISPRICED. No heading. Specific numerical gap: consensus FY26E EPS X vs our Y. Reference specific 10-K material the market is discounting (guidance commentary, segment disclosures, capex trajectory). 2 sidenotes.`,
       `Write THE COMPLICATION section for ${r.ticker}.\n\n${userBase}`,
@@ -369,7 +411,7 @@ OUTPUT: 500-600 words on what's MISPRICED. No heading. Specific numerical gap: c
     ),
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT: 700-900 words of valuation analysis. No heading. Name method (SOTP / DCF / multiple / NAV). Show math end-to-end: assumptions → multiple → per-share value. If DCF, state WACC (risk-free, ERP, beta) + terminal growth. Compare to 5Y historical trading range. 2 sidenotes.`,
       `Write the VALUATION section for ${r.ticker}. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}. 700-900 words.\n\n${userBase}`,
@@ -377,7 +419,7 @@ OUTPUT: 700-900 words of valuation analysis. No heading. Name method (SOTP / DCF
     ),
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT: 500-700 words. No heading. State PT explicitly. Show upside/downside vs current. Three scenarios — Base (60%), Bull (25%), Bear (15%) — each with specific price, driver, EPS assumption, multiple. Probability-weighted EV at the end.`,
       `Write the PRICE TARGET SECTION for ${r.ticker} with three scenarios. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\n${userBase}`,
@@ -388,7 +430,7 @@ OUTPUT: 500-700 words. No heading. State PT explicitly. Show upside/downside vs 
     // ---- Call A2: Supporting point #1 (plain markdown output) ----
     runModel(
     ai, PRIMARY_MODEL,
-    VOICE_SYSTEM + `
+    voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " followed by an 8-12 word argumentative H2 headline. Remaining content is 800-1000 words of prose in 4-5 paragraphs. Every financial number carries a source tag. 15+ source tags total. 3 sidenote markers [[SIDENOTE: ...]]. No preamble, no meta.`,
     `Write the STRONGEST bull-case deep-dive for ${r.ticker}. Pick the most material structural advantage in the 10-K MD&A. Cover: 3-year revenue trajectory with growth rates, margin path with percentages, named products/customers/partnerships, competitive positioning with named rivals, guidance quotes, and capex/R&D.\n\n${userBase}`,
@@ -397,7 +439,7 @@ OUTPUT FORMAT: FIRST line is "# " followed by an 8-12 word argumentative H2 head
     // ---- Call A3: Supporting point #2 (plain markdown output) ----
     runModel(
     ai, PRIMARY_MODEL,
-    VOICE_SYSTEM + `
+    voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of institutional analysis in 4-5 paragraphs. 15+ source tags. 3 sidenote markers [[SIDENOTE: ...]]. No preamble.`,
     `Write the SECOND-STRONGEST bull deep-dive for ${r.ticker}. ORTHOGONAL to the first deep dive (different axis).\n\n${userBase}`,
@@ -406,7 +448,7 @@ OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of institu
     // ---- Call A4: Risks (plain markdown) ----
     runModel(
     ai, PRIMARY_MODEL,
-    VOICE_SYSTEM + `
+    voiceWithSector + `
 
 OUTPUT FORMAT: 700-900 words of prose covering 4-5 specific risks. Each risk is a paragraph starting with a **bold heading**. Include: probability (low/medium/high), magnitude (EPS hit or multiple compression), warning signs, historical precedent. 2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
     `Write the KEY RISKS section for ${r.ticker}. 4-5 specific risks from Item 1A. 700-900 words.\n\n${userBase}`,
@@ -415,7 +457,7 @@ OUTPUT FORMAT: 700-900 words of prose covering 4-5 specific risks. Each risk is 
     // ---- Call A4b: Catalysts (plain markdown) ----
     runModel(
     ai, PRIMARY_MODEL,
-    VOICE_SYSTEM + `
+    voiceWithSector + `
 
 OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the next 12-24 months. Each catalyst is a paragraph starting with a **bold date+event heading** like "**Q1 FY26 earnings · February 2026**". Include: what the event is, how it moves the stock (price delta), Street consensus vs our view, what would be a beat vs miss. 1-2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
     `Write the CATALYSTS section for ${r.ticker}. 5-7 time-bound events, each with specific date.\n\n${userBase}`,
@@ -424,7 +466,7 @@ OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the 
     // ---- Call A5: Third supporting deep dive (plain markdown) ----
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words, 4-5 paragraphs, 15+ source tags, 3 sidenotes [[SIDENOTE: ...]]. No preamble.`,
       `Write a THIRD bull deep-dive for ${r.ticker}. Orthogonal to the first two (pick: international expansion, margin inflection, capex cycle, capital return, product cycle, regulatory tailwind, pricing power).\n\n${userBase}`,
@@ -433,7 +475,7 @@ OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words, 4-5 parag
     // ---- Call A6: SOTP / Hidden Value (plain markdown) ----
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of prose. Table-in-prose: break out each segment/asset, estimate revenue and EBITDA [10-K], apply a peer multiple (cite the peer), arrive at a value [Computed]. Sum to get implied EV. Compare to current mkt cap. Flag hidden assets. 3 sidenotes.`,
       `Sum-of-parts / hidden value deep-dive for ${r.ticker}. Segment-by-segment math. 800-1000 words.\n\n${userBase}`,
@@ -442,7 +484,7 @@ OUTPUT FORMAT: FIRST line is "# " + 8-12 word H2. Then 800-1000 words of prose. 
     // ---- Call A7: Management (plain markdown) ----
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on management + capital allocation. Then 700-900 words of prose. Name CEO, CFO, tenure, prior roles. Cite buybacks ($ amounts + share count reductions over 3-5 years), dividends initiated/raised, major M&A (names + prices + IRR), capex trajectory. Compare capital return as % of FCF to peers. Named past decisions that created or destroyed value. 2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
       `Management + capital allocation deep-dive for ${r.ticker}. 700-900 words. Name names and cite dollars.\n\n${userBase}`,
@@ -451,7 +493,7 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on management + capital alloca
     // ---- Call A7b: Revenue & Earnings Bridge (plain markdown) ----
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT FORMAT: 700-900 words of prose, no heading. Walk from last-reported revenue → next 3-year revenue, decomposing by segment growth rates (organic vs acquired). Then walk from revenue → operating income (margin assumptions stated) → EPS (share count + tax rate stated). Include a Street-consensus vs our-estimates comparison. 2 sidenotes [[SIDENOTE: ...]]. Dense [10-K]/[Estimated] tags. No preamble.`,
       `Revenue & earnings bridge for ${r.ticker}. Walk forward 3 years with segment decomposition.\n\n${userBase}`,
@@ -460,7 +502,7 @@ OUTPUT FORMAT: 700-900 words of prose, no heading. Walk from last-reported reven
     // ---- Call A8: Competitive Landscape (plain markdown) ----
     runModel(
       ai, PRIMARY_MODEL,
-      VOICE_SYSTEM + `
+      voiceWithSector + `
 
 OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Then **800-1000 words — do not stop before 800 words**.
   P1: Market structure overview — total addressable market size, growth rate, top 5 players by market share %

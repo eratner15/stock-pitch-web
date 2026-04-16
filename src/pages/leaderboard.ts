@@ -1,3 +1,5 @@
+import { escapeHtml } from '../lib/security';
+
 export interface LeaderboardRow {
   rank: number;
   user_display: string;
@@ -429,15 +431,16 @@ ${topRows.length >= 3 ? `
 function renderSpPodium(r: LeaderboardRow, rank: number, first = false): string {
   const pos = r.return_pct >= 0;
   const arrow = r.direction === 'long' ? '▲' : '▼';
-  return `<a href="/c/${r.call_id}" class="podium-card ${first ? 'first' : ''}">
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<a href="/c/${encodeURIComponent(r.call_id)}" class="podium-card ${first ? 'first' : ''}">
     <div class="pc-rank">${rank === 1 ? 'I' : rank === 2 ? 'II' : 'III'}</div>
     <div class="pc-hed">${first ? 'Lead Story' : rank === 2 ? 'Second Run' : 'Also Noted'}</div>
-    <div class="pc-name">${r.user_display}</div>
+    <div class="pc-name">${escapeHtml(r.user_display)}</div>
     <div class="pc-ticker-row">
-      <span class="pc-dir-arrow ${r.direction}">${arrow}</span>
-      <span class="pc-ticker">${r.ticker}</span>
+      <span class="pc-dir-arrow ${dir}">${arrow}</span>
+      <span class="pc-ticker">${escapeHtml(r.ticker)}</span>
       <span style="color:currentColor;opacity:0.5">·</span>
-      <span>${r.direction.toUpperCase()}</span>
+      <span>${dir.toUpperCase()}</span>
     </div>
     <div class="pc-return ${pos ? '' : 'neg'}">${pos ? '+' : ''}${(r.return_pct * 100).toFixed(1)}%</div>
     <div class="pc-meta">Held ${r.days_held}d · Entry $${r.entry_price.toFixed(2)}</div>
@@ -446,21 +449,22 @@ function renderSpPodium(r: LeaderboardRow, rank: number, first = false): string 
 
 function renderSpRow(r: LeaderboardRow): string {
   const pos = r.return_pct >= 0;
-  return `<tr onclick="location='/c/${r.call_id}'" style="cursor:pointer">
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<tr onclick="location='/c/${encodeURIComponent(r.call_id)}'" style="cursor:pointer">
     <td><div class="rank-big">${r.rank}</div></td>
     <td>
       <div class="analyst">
-        <div class="analyst-mark">${r.user_initials}</div>
-        <div class="analyst-name">${r.user_display}</div>
+        <div class="analyst-mark">${escapeHtml(r.user_initials)}</div>
+        <div class="analyst-name">${escapeHtml(r.user_display)}</div>
       </div>
     </td>
     <td>
-      <div class="tkr">${r.ticker}</div>
-      ${r.company ? `<div class="co">${r.company}</div>` : ''}
+      <div class="tkr">${escapeHtml(r.ticker)}</div>
+      ${r.company ? `<div class="co">${escapeHtml(r.company)}</div>` : ''}
     </td>
     <td>
-      <span class="stamp ${r.direction}">
-        <span class="arrow">${r.direction === 'long' ? '▲' : '▼'}</span> ${r.direction}
+      <span class="stamp ${dir}">
+        <span class="arrow">${dir === 'long' ? '▲' : '▼'}</span> ${dir}
       </span>
     </td>
     <td class="r">$${r.entry_price.toFixed(2)}</td>
@@ -472,12 +476,13 @@ function renderSpRow(r: LeaderboardRow): string {
 
 function renderSpMobile(r: LeaderboardRow): string {
   const pos = r.return_pct >= 0;
-  return `<a href="/c/${r.call_id}" class="mc-card">
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<a href="/c/${encodeURIComponent(r.call_id)}" class="mc-card">
     <div class="mc-top">
       <div class="mc-left">
-        <div class="analyst-mark">${r.user_initials}</div>
+        <div class="analyst-mark">${escapeHtml(r.user_initials)}</div>
         <div style="min-width:0;flex:1">
-          <div class="mc-name">${r.user_display}</div>
+          <div class="mc-name">${escapeHtml(r.user_display)}</div>
           <div class="mc-rank-line">№ ${r.rank} · ${r.days_held}d held</div>
         </div>
       </div>
@@ -487,7 +492,7 @@ function renderSpMobile(r: LeaderboardRow): string {
       </div>
     </div>
     <div class="mc-bot">
-      <div><span class="tkr-sym">${r.ticker}</span> · ${r.direction}</div>
+      <div><span class="tkr-sym">${escapeHtml(r.ticker)}</span> · ${dir}</div>
       <div>$${r.entry_price.toFixed(2)} → $${r.current_price.toFixed(2)}</div>
     </div>
   </a>`;
@@ -501,7 +506,7 @@ function buildTicker(rows: LeaderboardRow[]): string {
     const pct = (r.return_pct * 100).toFixed(2);
     const cls = r.return_pct >= 0 ? 'up' : 'dn';
     const sign = r.return_pct >= 0 ? '+' : '';
-    return `${r.ticker} <span class="${cls}">${sign}${pct}%</span>`;
+    return `${escapeHtml(r.ticker)} <span class="${cls}">${sign}${pct}%</span>`;
   }).join(' <span class="sep">◆</span> ') + ' <span class="sep">◆</span> ';
 }
 
@@ -946,14 +951,15 @@ function renderLcPlate(r: LeaderboardRow, rank: number, primary = false): string
   const pos = r.return_pct >= 0;
   const romans = ['', 'I.', 'II.', 'III.'];
   const tags = ['', 'Lead Position', 'Second Entry', 'Third Entry'];
-  return `<a href="/c/${r.call_id}" class="plate ${primary ? 'primary' : ''}">
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<a href="/c/${encodeURIComponent(r.call_id)}" class="plate ${primary ? 'primary' : ''}">
     <div class="p-roman">${romans[rank]}</div>
     <div class="p-tag">${tags[rank]}</div>
-    <div class="p-name">${r.user_display}</div>
+    <div class="p-name">${escapeHtml(r.user_display)}</div>
     <div class="p-ticker-row">
-      <span class="p-ticker">${r.ticker}</span>
+      <span class="p-ticker">${escapeHtml(r.ticker)}</span>
       <span class="p-sep">·</span>
-      <span class="p-dir">${r.direction === 'long' ? 'long' : 'short'}</span>
+      <span class="p-dir">${dir}</span>
     </div>
     <div class="p-return ${pos ? '' : 'neg'}">${pos ? '+' : ''}${(r.return_pct * 100).toFixed(1)}%</div>
     <div class="p-meta">Held ${r.days_held} days · Entry at $${r.entry_price.toFixed(2)}</div>
@@ -962,19 +968,20 @@ function renderLcPlate(r: LeaderboardRow, rank: number, primary = false): string
 
 function renderLcRow(r: LeaderboardRow): string {
   const pos = r.return_pct >= 0;
-  return `<tr onclick="location='/c/${r.call_id}'" style="cursor:pointer">
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<tr onclick="location='/c/${encodeURIComponent(r.call_id)}'" style="cursor:pointer">
     <td><div class="l-rank">${toRoman(r.rank)}</div></td>
     <td>
       <div class="l-analyst">
-        <div class="l-monogram">${r.user_initials}</div>
-        <div class="l-name">${r.user_display}</div>
+        <div class="l-monogram">${escapeHtml(r.user_initials)}</div>
+        <div class="l-name">${escapeHtml(r.user_display)}</div>
       </div>
     </td>
     <td>
-      <div class="l-tkr">${r.ticker}</div>
-      ${r.company ? `<div class="l-co">${r.company}</div>` : ''}
+      <div class="l-tkr">${escapeHtml(r.ticker)}</div>
+      ${r.company ? `<div class="l-co">${escapeHtml(r.company)}</div>` : ''}
     </td>
-    <td><span class="l-dir ${r.direction}">${r.direction}</span></td>
+    <td><span class="l-dir ${dir}">${dir}</span></td>
     <td class="r">$${r.entry_price.toFixed(2)}</td>
     <td class="r">$${r.current_price.toFixed(2)}</td>
     <td class="r"><span class="l-ret ${pos ? 'pos' : 'neg'}">${pos ? '+' : ''}${(r.return_pct * 100).toFixed(1)}%</span></td>
@@ -984,11 +991,12 @@ function renderLcRow(r: LeaderboardRow): string {
 
 function renderLcMobile(r: LeaderboardRow): string {
   const pos = r.return_pct >= 0;
-  return `<a href="/c/${r.call_id}" class="lm-card">
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<a href="/c/${encodeURIComponent(r.call_id)}" class="lm-card">
     <div class="lm-top">
       <div class="lm-left">
         <div class="lm-rank">№ ${toRoman(r.rank)}</div>
-        <div class="lm-name">${r.user_display}</div>
+        <div class="lm-name">${escapeHtml(r.user_display)}</div>
       </div>
       <div class="lm-right">
         <div class="lm-ret ${pos ? 'pos' : 'neg'}">${pos ? '+' : ''}${(r.return_pct * 100).toFixed(1)}%</div>
@@ -996,9 +1004,9 @@ function renderLcMobile(r: LeaderboardRow): string {
       </div>
     </div>
     <div class="lm-mid">
-      <div class="l-tkr">${r.ticker}</div>
-      ${r.company ? `<div class="l-co">${r.company}</div>` : '<div style="flex:1"></div>'}
-      <span class="l-dir ${r.direction}">${r.direction}</span>
+      <div class="l-tkr">${escapeHtml(r.ticker)}</div>
+      ${r.company ? `<div class="l-co">${escapeHtml(r.company)}</div>` : '<div style="flex:1"></div>'}
+      <span class="l-dir ${dir}">${dir}</span>
     </div>
     <div class="lm-bot">
       <span>Entry $${r.entry_price.toFixed(2)} → $${r.current_price.toFixed(2)}</span>

@@ -104,7 +104,8 @@ a{color:inherit;text-decoration:none}
 
 /* LEADERBOARD TEASER */
 .section{padding:36px 0 40px;border-top:1px dotted var(--ink-20)}
-.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;margin-bottom:18px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;margin-bottom:18px;flex-wrap:wrap}
+.section-hed{white-space:nowrap}
 .section-hed{font-family:var(--display);font-size:28px;line-height:1;color:var(--ink);letter-spacing:-0.01em}
 .section-hed em{color:var(--red);font-style:italic}
 .section-link{font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-60);border-bottom:1px solid var(--ink-20);padding-bottom:2px;transition:color 0.15s,border 0.15s}
@@ -138,7 +139,7 @@ a{color:inherit;text-decoration:none}
 .report:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}
 .report-tkr{font-family:var(--display);font-size:26px;line-height:1;color:var(--ink);margin-bottom:2px}
 .report-co{font-family:var(--body);font-style:italic;font-size:13px;color:var(--ink-60);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.report-thesis{font-family:var(--body);font-size:14px;line-height:1.5;color:var(--ink-60);margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.report-thesis{font-family:var(--body);font-size:14.5px;line-height:1.55;color:var(--ink);margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .report-foot{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px dotted var(--ink-20);font-family:var(--mono);font-size:11px;letter-spacing:1.5px}
 .report-stat{font-family:var(--display);font-size:18px;line-height:1}
 .report-stat.pos{color:var(--bull)}
@@ -152,25 +153,32 @@ footer .wrap{display:flex;justify-content:space-between;align-items:center;gap:1
 footer .note{font-family:var(--body);font-style:italic;text-transform:none;letter-spacing:0;font-size:12px;color:var(--ink-40)}
 
 @media(max-width:720px){
+  body{font-size:17px}
   .wrap{padding:0 20px}
   .mh-brand{font-size:22px}
   .mh-nav{gap:14px;font-size:10px;letter-spacing:1px}
   .hero{padding:44px 0 44px}
-  .hero h1{font-size:48px;line-height:0.95}
-  .hero-tag{font-size:16px;margin-bottom:28px}
+  .hero h1{font-size:48px;line-height:0.98;letter-spacing:-0.01em;word-spacing:0.04em}
+  .hero-tag{font-size:17px;margin-bottom:28px;line-height:1.5}
   .ticker-form{max-width:100%;box-shadow:4px 4px 0 var(--ink)}
   .ticker-form input{padding:14px 16px;font-size:20px;letter-spacing:3px}
   .ticker-form button{padding:14px 18px;font-size:11px;letter-spacing:1.5px}
-  .chips{gap:6px}
-  .chip{padding:7px 11px;font-size:11px}
+  .chips{gap:7px}
+  .chip{padding:11px 14px;font-size:12px}
+  .section-link{display:none}
   .section{padding:28px 0 32px}
-  .section-hed{font-size:24px}
-  .lb-row{grid-template-columns:28px 1fr auto;gap:10px;padding:11px 14px}
+  .section-hed{font-size:24px;white-space:normal}
+  .lb-row{grid-template-columns:28px 1fr auto;gap:10px;padding:13px 14px}
   .lb-dir{display:none}
   .lb-rank{font-size:18px}
-  .lb-ret{font-size:16px;min-width:56px}
-  .reports-grid{grid-template-columns:1fr;gap:10px}
+  .lb-ret{font-size:17px;min-width:60px}
+  .lb-analyst{font-size:16px}
   .report{padding:16px}
+  .reports-grid{grid-template-columns:1fr;gap:10px}
+  .report-tkr{font-size:24px}
+  .report-co{font-size:14px}
+  .report-thesis{font-size:15px;line-height:1.55}
+  .report-stat{font-size:18px}
   footer .wrap{flex-direction:column;gap:8px;text-align:center}
 }
 </style>
@@ -190,7 +198,7 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
 <section class="hero">
   <div class="wrap">
     <h1>Pitch a <em>stock.</em></h1>
-    <p class="hero-tag">Enter a ticker. Get an AI research brief in two minutes. The market keeps score.</p>
+    <p class="hero-tag">Enter a ticker. Get an AI research brief. The market keeps score.</p>
     <form class="ticker-form" action="/submit" method="get" onsubmit="return sanitizeTicker(event)">
       <input name="ticker" id="heroTicker" placeholder="TYPE A TICKER" maxlength="8" autocomplete="off" spellcheck="false" autofocus>
       <button type="submit">Pitch →</button>
@@ -266,14 +274,19 @@ document.getElementById('heroTicker').addEventListener('input', e => {
 </html>`;
 }
 
+function toRoman(n: number): string {
+  return ['I','II','III','IV','V','VI','VII','VIII','IX','X'][n - 1] || String(n);
+}
+
 function renderLbRow(r: LeaderboardRow, rank: number): string {
   const pos = r.return_pct >= 0;
-  return `<a class="lb-row" href="/c/${r.call_id}">
-    <div class="lb-rank">${rank}</div>
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<a class="lb-row" href="/c/${encodeURIComponent(r.call_id)}">
+    <div class="lb-rank">${toRoman(rank)}</div>
     <div>
-      <span class="lb-analyst">${r.user_display}<span class="tkr">${r.ticker}</span></span>
+      <span class="lb-analyst">${escapeHtml(r.user_display)}<span class="tkr">${escapeHtml(r.ticker)}</span></span>
     </div>
-    <div class="lb-dir">${r.direction}</div>
+    <div class="lb-dir">${dir}</div>
     <div class="lb-ret ${pos ? 'pos' : 'neg'}">${pos ? '+' : ''}${(r.return_pct * 100).toFixed(1)}%</div>
   </a>`;
 }

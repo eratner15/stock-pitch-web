@@ -9,7 +9,7 @@ export function renderSubmitV2(brand: 'stockpitch' | 'levincap', prefillTicker?:
   const inkMuted = isLevin ? '#5A5651' : '#8B93AD';
   const border = isLevin ? '#D4CFC3' : '#1E2638';
   const displayFont = isLevin ? "'Playfair Display',Georgia,serif" : "'Inter',system-ui,sans-serif";
-  const brandMark = isLevin ? 'Levin Capital <em>Research</em>' : '<span style="color:' + accent + '">●</span>&nbsp;Stock Pitch';
+  const brandMark = isLevin ? 'Levin Capital <em>Research</em>' : '<span style="color:#B7141F">●</span>&nbsp;Stock Pitch';
 
   return `<!DOCTYPE html>
 <html lang="en">

@@ -118,6 +118,51 @@ async function fetchFromYahoo(ticker: string): Promise<PriceQuote | null> {
   }
 }
 
+/**
+ * 1-year daily close series via Yahoo v8 chart endpoint. Used by the
+ * portal memo's price chart. Returns [{t: ms, c: close}, ...].
+ */
+export async function fetchPriceHistory(ticker: string): Promise<Array<{ t: number; c: number }>> {
+  const t = ticker.toUpperCase().trim();
+  const tries = [t, t.replace(/\./g, '-'), t.replace(/-/g, '.')];
+  for (const sym of tries) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1y`;
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'application/json',
+        },
+        cf: { cacheTtl: 3600 },
+      });
+      if (!res.ok) continue;
+      const data = await res.json() as {
+        chart?: {
+          result?: Array<{
+            timestamp?: number[];
+            indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+          }>;
+        };
+      };
+      const r = data.chart?.result?.[0];
+      const ts = r?.timestamp;
+      const closes = r?.indicators?.quote?.[0]?.close;
+      if (!ts || !closes) continue;
+      const out: Array<{ t: number; c: number }> = [];
+      for (let i = 0; i < ts.length; i++) {
+        const c = closes[i];
+        if (typeof c === 'number' && Number.isFinite(c)) {
+          out.push({ t: ts[i] * 1000, c });
+        }
+      }
+      if (out.length >= 5) return out;
+    } catch (err) {
+      continue;
+    }
+  }
+  return [];
+}
+
 export function calcReturn(
   entry: number,
   current: number,

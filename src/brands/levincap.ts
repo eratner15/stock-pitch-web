@@ -110,7 +110,7 @@ a{color:inherit;text-decoration:none}
 
 /* SECTION */
 .section{padding:40px 0 32px;border-top:1px solid var(--ink-20)}
-.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;margin-bottom:22px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;margin-bottom:22px;flex-wrap:wrap}
 .section-hed{font-family:var(--display);font-weight:500;font-style:italic;font-size:30px;line-height:1;color:var(--ink);letter-spacing:-0.01em;font-variation-settings:"opsz" 72}
 .section-hed strong{font-weight:700;font-style:normal;font-variation-settings:"opsz" 72}
 .section-link{font-family:var(--smcp);font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--ink-60);border-bottom:1px solid var(--gold);padding-bottom:3px;transition:color 0.15s}
@@ -145,7 +145,7 @@ a{color:inherit;text-decoration:none}
 .report:hover{transform:translateY(-2px)}
 .report-tkr{font-family:var(--display);font-weight:700;font-size:24px;line-height:1;color:var(--ink);letter-spacing:0.5px;margin-bottom:3px;font-variation-settings:"opsz" 48}
 .report-co{font-family:var(--body);font-style:italic;font-size:14px;color:var(--ink-60);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:450}
-.report-thesis{font-family:var(--body);font-size:15px;line-height:1.55;color:var(--ink-60);margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-weight:450}
+.report-thesis{font-family:var(--body);font-size:15px;line-height:1.58;color:var(--ink);margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;font-weight:450}
 .report-foot{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--ink-20)}
 .report-stat{font-family:var(--display);font-weight:700;font-size:18px;line-height:1;font-variant-numeric:tabular-nums;font-variation-settings:"opsz" 24}
 .report-stat.pos{color:var(--ledger-green)}
@@ -166,13 +166,14 @@ footer .note{font-family:var(--body);font-style:italic;text-transform:none;lette
   .mast-brand{font-size:18px}
   .mast-nav{gap:14px;font-size:11px;letter-spacing:2px}
   .hero{padding:48px 0 44px}
-  .hero h1{font-size:46px}
+  .hero h1{font-size:46px;letter-spacing:-0.005em;word-spacing:0.06em}
   .hero-tag{font-size:17px;margin-bottom:28px}
   .ticker-form{max-width:100%}
   .ticker-form input{padding:14px 16px;font-size:20px;letter-spacing:2px}
   .ticker-form button{padding:14px 18px;font-size:11px;letter-spacing:3px}
-  .chips{gap:8px}
-  .chip{padding:6px 11px;font-size:10px;letter-spacing:2px}
+  .chips{gap:9px}
+  .chip{padding:10px 14px;font-size:11px;letter-spacing:2px}
+  .section-link{display:none}
   .section{padding:30px 0 24px}
   .section-hed{font-size:24px}
   .lb-row{grid-template-columns:32px 1fr auto;gap:12px;padding:14px 18px}
@@ -280,12 +281,13 @@ document.getElementById('heroTicker').addEventListener('input', e => {
 function renderLbRow(r: LeaderboardRow, rank: number): string {
   const pos = r.return_pct >= 0;
   const romans = ['','I','II','III','IV','V'];
-  return `<a class="lb-row" href="/c/${r.call_id}">
+  const dir = r.direction === 'long' ? 'long' : 'short';
+  return `<a class="lb-row" href="/c/${encodeURIComponent(r.call_id)}">
     <div class="lb-rank">${romans[rank] || rank}.</div>
     <div>
-      <span class="lb-analyst">${r.user_display}<span class="tkr">${r.ticker}</span></span>
+      <span class="lb-analyst">${escapeHtml(r.user_display)}<span class="tkr">${escapeHtml(r.ticker)}</span></span>
     </div>
-    <div class="lb-dir">${r.direction}</div>
+    <div class="lb-dir">${dir}</div>
     <div class="lb-ret ${pos ? 'pos' : 'neg'}">${pos ? '+' : ''}${(r.return_pct * 100).toFixed(1)}%</div>
   </a>`;
 }
