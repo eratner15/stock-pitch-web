@@ -87,6 +87,21 @@ export function portalMarkdown(md: string, inline = false): string {
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|\s)\*([^*]+)\*(\s|$)/g, '$1<em>$2</em>$3');
   if (inline) return out.trim();
+  // Convert markdown tables to HTML
+  out = out.replace(/((?:^\|.+\|$\n?){2,})/gm, (tableBlock) => {
+    const rows = tableBlock.trim().split('\n').filter(r => r.trim());
+    if (rows.length < 2) return tableBlock;
+    const parseRow = (r: string) => r.split('|').slice(1, -1).map(c => c.trim());
+    const header = parseRow(rows[0]);
+    const isSep = (r: string) => /^\|[\s\-:|]+\|$/.test(r.trim());
+    const dataStart = isSep(rows[1]) ? 2 : 1;
+    const ths = header.map(h => `<th>${h}</th>`).join('');
+    const trs = rows.slice(dataStart).filter(r => !isSep(r)).map(r => {
+      const cells = parseRow(r);
+      return `<tr>${cells.map(c => `<td>${c.startsWith('**') ? `<strong>${c.replace(/\*\*/g, '')}</strong>` : c}</td>`).join('')}</tr>`;
+    }).join('');
+    return `<table class="data"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+  });
   // Convert markdown headers to HTML
   out = out.replace(/^#{3}\s+(.+)$/gm, '<h4 class="section-sub">$1</h4>');
   out = out.replace(/^#{2}\s+(.+)$/gm, '<h3 class="section-sub">$1</h3>');
