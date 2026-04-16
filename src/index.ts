@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { routeAgentRequest } from 'agents';
 export { ResearchAgent } from './agents/research-agent';
+export { WorkflowAgent } from './agents/workflow-agent';
 import puppeteer from '@cloudflare/puppeteer';
 import { renderStockPitchLanding } from './brands/stockpitch';
 import { renderLevinCapLanding } from './brands/levincap';
@@ -46,6 +47,9 @@ import {
   priceForTier,
   type Tier,
 } from './lib/stripe';
+import { renderResearchDesk } from './pages/research-desk';
+import { renderWorkflowRun, renderRunDetail } from './pages/workflow-run';
+import { WORKFLOWS, isValidWorkflow, type WorkflowSlug } from './lib/workflow-config';
 
 interface Env {
   DB: D1Database;
@@ -53,6 +57,7 @@ interface Env {
   AI: any;
   BROWSER: Fetcher;
   ResearchAgent: DurableObjectNamespace;
+  WorkflowAgent: DurableObjectNamespace;
   ANTHROPIC_API_KEY: string;
   OPENAI_API_KEY: string;
   ADMIN_KEY?: string;
@@ -134,9 +139,10 @@ app.get('/', async (c) => {
 });
 
 // ==========================================================================
-// RESEARCH — the infinite research desk entry point
+// RESEARCH — legacy single-ticker research page (now redirects to workflow)
+// Kept for backward compat: /research?ticker=AAPL → /research/coverage?ticker=AAPL
 // ==========================================================================
-app.get('/research', async (c) => {
+app.get('/research-single', async (c) => {
   const ticker = (c.req.query('ticker') || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 8);
   if (!ticker) return c.redirect('/');
   const { renderResearchPage } = await import('./pages/research');
@@ -160,6 +166,126 @@ app.post('/api/agent/research', async (c) => {
   });
   const result = await doResp.json();
   return c.json(result as any, doResp.ok ? 200 : 500);
+});
+
+// ==========================================================================
+// RESEARCH DESK — AI workflow platform
+// ==========================================================================
+
+// Helper: auth redirect that works from both /stock-pitch and /research mounts
+function authRedirect(c: any, next: string) {
+  const host = c.req.header('host') || '';
+  // On levincap.com, auth is under the /stock-pitch mount
+  const prefix = host.includes('levincap.com') ? '/stock-pitch' : '';
+  return c.redirect(`${prefix}/auth/signin?next=${encodeURIComponent(next)}`);
+}
+
+// Dashboard — accessible without auth (shows empty recent list), auth required to run workflows
+app.get('/research', async (c) => {
+  const user = c.get('user');
+  let recentRuns: any[] = [];
+  if (user) {
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, workflow, ticker, output_summary, status, created_at, duration_ms
+       FROM workflow_runs WHERE user_id = ? ORDER BY created_at DESC LIMIT 10`
+    ).bind(user.id).all();
+    recentRuns = results as any[] || [];
+  }
+  const mountPrefix = '';  // path-mount rewriter handles this
+  return c.html(renderResearchDesk(recentRuns, mountPrefix));
+});
+
+// History page
+app.get('/research/history', async (c) => {
+  const user = c.get('user');
+  if (!user) return authRedirect(c, '/research/history');
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, workflow, ticker, output_summary, status, created_at, duration_ms
+     FROM workflow_runs WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`
+  ).bind(user.id).all();
+  const mountPrefix = '';
+  return c.html(renderResearchDesk(results as any[] || [], mountPrefix));
+});
+
+// View a completed run
+app.get('/research/run/:id', async (c) => {
+  const user = c.get('user');
+  if (!user) return authRedirect(c, '/research');
+  const runId = c.req.param('id');
+  const run = await c.env.DB.prepare(
+    `SELECT * FROM workflow_runs WHERE id = ? AND user_id = ?`
+  ).bind(runId, user.id).first();
+  if (!run) return c.text('Run not found', 404);
+  return c.html(renderRunDetail(run, ''));
+});
+
+// Workflow page — viewable without auth, Run button requires auth via API
+app.get('/research/:workflow', (c) => {
+  const slug = c.req.param('workflow');
+  if (!isValidWorkflow(slug)) return c.text('Unknown workflow', 404);
+  const ticker = c.req.query('ticker')?.toUpperCase().replace(/[^A-Z.]/g, '') || undefined;
+  const config = WORKFLOWS[slug as WorkflowSlug];
+  return c.html(renderWorkflowRun({ workflow: config, ticker, mountPrefix: '' }));
+});
+
+// API: Create a workflow run (returns runId)
+app.post('/api/research/run', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  const body = await c.req.json().catch(() => ({} as any));
+  const { workflow, ticker, context } = body;
+  if (!workflow || !isValidWorkflow(workflow)) return c.json({ error: 'Invalid workflow' }, 400);
+  const config = WORKFLOWS[workflow as WorkflowSlug];
+  if (config.requiresTicker && !ticker) return c.json({ error: 'Ticker required' }, 400);
+  const safeTicker = ticker ? String(ticker).toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10) : null;
+  const runId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  await c.env.DB.prepare(
+    `INSERT INTO workflow_runs (id, user_id, workflow, ticker, status, input_params) VALUES (?, ?, ?, ?, 'running', ?)`
+  ).bind(runId, user.id, workflow, safeTicker, JSON.stringify({ ticker: safeTicker, context: context || null })).run();
+  return c.json({ ok: true, runId });
+});
+
+// API: Stream a workflow run via SSE (connects to WorkflowAgent DO)
+app.post('/api/research/run/:id/stream', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  const runId = c.req.param('id');
+  const body = await c.req.json().catch(() => ({} as any));
+  const { workflow, ticker, context } = body;
+  if (!workflow || !isValidWorkflow(workflow)) return c.json({ error: 'Invalid workflow' }, 400);
+  const safeTicker = ticker ? String(ticker).toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10) : '';
+
+  // Name the DO by workflow:ticker:user for per-user isolation
+  const doName = `${workflow}:${safeTicker || 'all'}:${user.id}:${runId}`;
+  const doId = c.env.WorkflowAgent.idFromName(doName);
+  const stub = c.env.WorkflowAgent.get(doId);
+
+  const doResp = await stub.fetch('http://agent/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workflow, ticker: safeTicker || undefined, context, userId: user.id, runId }),
+  });
+
+  // Pass through the SSE stream
+  return new Response(doResp.body, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+});
+
+// API: Poll run status
+app.get('/api/research/run/:id', async (c) => {
+  const user = c.get('user');
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  const run = await c.env.DB.prepare(
+    `SELECT id, workflow, ticker, status, output_summary, output_json, tool_calls, tokens_used, duration_ms, error_message, created_at, completed_at
+     FROM workflow_runs WHERE id = ? AND user_id = ?`
+  ).bind(c.req.param('id'), user.id).first();
+  if (!run) return c.json({ error: 'Not found' }, 404);
+  return c.json(run);
 });
 
 // ==========================================================================
@@ -1519,6 +1645,7 @@ app.notFound((c) => c.text('Not Found', 404));
 // Hono routes are defined WITHOUT the prefix; the wrapper strips + rewrites.
 // Host allow-list is left empty: rely purely on URL prefix.
 const MOUNT_PREFIX = '/stock-pitch';
+const RESEARCH_MOUNT = '/research';
 
 /**
  * Portal generation pipeline — invoked via waitUntil() so the request
@@ -1613,12 +1740,24 @@ function isMounted(url: URL): boolean {
   return url.pathname === MOUNT_PREFIX || url.pathname.startsWith(MOUNT_PREFIX + '/');
 }
 
+function isResearchMounted(url: URL): boolean {
+  return url.pathname === RESEARCH_MOUNT || url.pathname.startsWith(RESEARCH_MOUNT + '/');
+}
+
 function rewriteAbsolute(value: string | null): string | null {
   if (!value) return value;
   if (!value.startsWith('/')) return value;
   if (value.startsWith('//')) return value;
   if (value.startsWith(MOUNT_PREFIX + '/') || value === MOUNT_PREFIX) return value;
   return MOUNT_PREFIX + value;
+}
+
+function rewriteAbsoluteResearch(value: string | null): string | null {
+  if (!value) return value;
+  if (!value.startsWith('/')) return value;
+  if (value.startsWith('//')) return value;
+  if (value.startsWith(RESEARCH_MOUNT + '/') || value === RESEARCH_MOUNT) return value;
+  return RESEARCH_MOUNT + value;
 }
 
 // Client-side wrapper that prefixes absolute-path fetch() calls and

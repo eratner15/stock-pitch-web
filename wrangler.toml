@@ -13,7 +13,12 @@ routes = [
   { pattern = "www.levincap.com/stock-pitch", zone_name = "levincap.com" },
   { pattern = "www.levincap.com/stock-pitch/*", zone_name = "levincap.com" },
   { pattern = "research.levincap.com/stock-pitch", zone_name = "levincap.com" },
-  { pattern = "research.levincap.com/stock-pitch/*", zone_name = "levincap.com" }
+  { pattern = "research.levincap.com/stock-pitch/*", zone_name = "levincap.com" },
+  # Research Desk — the full research workflow platform
+  { pattern = "levincap.com/research", zone_name = "levincap.com" },
+  { pattern = "levincap.com/research/*", zone_name = "levincap.com" },
+  { pattern = "www.levincap.com/research", zone_name = "levincap.com" },
+  { pattern = "www.levincap.com/research/*", zone_name = "levincap.com" }
 ]
 workers_dev = true
 
@@ -50,9 +55,18 @@ binding = "BROWSER"
 class_name = "ResearchAgent"
 name = "ResearchAgent"
 
+# Workflow Agent — Generalized DO for all research desk workflows
+[[durable_objects.bindings]]
+class_name = "WorkflowAgent"
+name = "WorkflowAgent"
+
 [[migrations]]
 new_sqlite_classes = ["ResearchAgent"]
 tag = "v1"
+
+[[migrations]]
+new_sqlite_classes = ["WorkflowAgent"]
+tag = "v2"
 
 # Cron: nightly price refresh + batch queue processing every 3 min
 [triggers]
