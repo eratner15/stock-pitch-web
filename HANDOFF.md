@@ -4,111 +4,149 @@ Copy everything below this line and paste it as your first message in a new Clau
 
 ---
 
-I'm continuing work on stock-pitch-web, an AI-powered equity research portal generator for Levin Capital. Clone and set up:
+I'm continuing work on stock-pitch-web, the Levin Capital research platform. It has two products in one worker:
+
+1. **Stock Pitch** — enter a ticker, get a 15-section institutional investment memo (levincap.com/stock-pitch)
+2. **Research Desk** — 10 AI workflows (screen, DCF, comps, earnings, etc.) powered by Durable Object agents (levincap.com/research)
 
 ```bash
-git clone https://github.com/eratner15/stock-pitch-web.git
-cd stock-pitch-web
+cd /home/eratner/stock-pitch-web  # or: git clone https://github.com/eratner15/stock-pitch-web.git
 npm install
 ```
 
-## What this is
+## Live URLs
 
-The "infinite research desk" — enter a ticker, get a 15-section institutional investment memo with financial model, consensus/peer comps, pitch deck, and diligence questions. All tabs auto-generated.
-
-**Live:** https://research.levincap.com/stock-pitch/
-**Best example:** https://research.levincap.com/stock-pitch/NVDA/memo
+| Product | URL | Status |
+|---------|-----|--------|
+| Stock Pitch landing | levincap.com/stock-pitch | Working |
+| Stock Pitch portals | levincap.com/stock-pitch/NVDA/memo | Working (6 tickers) |
+| Research Desk dashboard | levincap.com/research | Working |
+| Research Desk workflows | levincap.com/research/screen?ticker=AAPL | Working (10 workflows) |
+| Research Desk on research subdomain | research.levincap.com/research | Working |
+| Workers.dev | stock-pitch-web.evan-ratner.workers.dev | Working |
 
 ## Architecture
 
 ```
-Homepage (enter ticker) → /research?ticker=X (progress UI) → /generate (sync, 2-3 min)
-→ 15-section memo + model + consensus + deck + questions stored in KV
-→ /library shows all portals ranked by confidence → long/short books auto-constructed
+Two products, one worker (stock-pitch-web), one D1 database (stock-pitch-db):
+
+STOCK PITCH (existing):
+  Homepage → /research-single?ticker=X → /generate (2-3 min) → 6-tab portal in KV
+  ResearchAgent DO (Claude Sonnet) for agentic pitch generation
+  Workers AI Llama 70B for prose, Anthropic for structured JSON fallback
+
+RESEARCH DESK (new, Phases 1-3 complete):
+  /research → dashboard with 10 workflow cards
+  /research/:workflow?ticker=X → input form + SSE streaming progress
+  /research/api/run → POST to create run → WorkflowAgent DO
+  WorkflowAgent DO: parameterized agentic loop, Claude Sonnet + tool use
+  10 skill markdowns loaded as system prompts via wrangler [[rules]]
+  LB client ported for portfolio/morning workflows
 ```
 
-**Three-layer stack:**
-- **Fat skills (top):** prompts in portal-generator.ts encode equity research judgment
-- **Thin harness (middle):** index.ts routes, ~200 LOC dispatch logic
-- **Deterministic foundation (bottom):** edgar.ts (SEC), prices.ts (Yahoo), fact-verify.ts, charts.ts
+**Fat skills / thin harness / deterministic foundation:**
+- Skills (top): `src/skills/workflows/*.md` — 10 research workflow prompts
+- Harness (middle): `src/index.ts` — Hono routes, ~100 LOC for research desk dispatch
+- Foundation (bottom): `src/lib/edgar.ts`, `src/lib/prices.ts`, `src/lib/lb-client.ts`
 
-**Model routing:**
-- Workers AI Llama 3.3 70B: all 16 prose sections (free)
-- Anthropic Claude Sonnet: financials JSON + consensus JSON fallback (paid, reliable for structured data)
-- Workers AI Llama 8B: deck slides + diligence Qs (fast)
+## Key Files
 
-**Key files:**
-- `src/lib/portal-generator.ts` — the orchestrator (Phase 1 foundation → Phase 2 prose → Phase 3 polish)
-- `src/pages/portal-memo.ts` — memo template
-- `src/pages/portal-layout.ts` — shared CSS + portalMarkdown() renderer
-- `src/agents/research-agent.ts` — Claude-powered DO agent (native Anthropic SDK)
-- `src/index.ts` — Hono routes + generatePortal + batch queue + books
+| File | Purpose |
+|------|---------|
+| `src/index.ts` | Main Hono router (2100+ lines), all routes, cron handler |
+| `src/agents/research-agent.ts` | Original ResearchAgent DO for pitch generation |
+| `src/agents/workflow-agent.ts` | New WorkflowAgent DO — parameterized for all 10 workflows |
+| `src/lib/workflow-config.ts` | Registry: maps 10 slugs to system prompts, tools, templates |
+| `src/lib/lb-client.ts` | LiquidityBook API client (ported from lcs-portfolio-intel) |
+| `src/lib/portal-generator.ts` | Portal generation orchestrator (Workers AI + Anthropic) |
+| `src/pages/research-desk.ts` | Research Desk dashboard page |
+| `src/pages/workflow-run.ts` | Universal workflow execution page (SSE + output render) |
+| `src/skills/workflows/*.md` | 10 skill markdown files (screen, dcf, comps, etc.) |
+| `src/brands/levincap.ts` | Levin Capital design system (Fraunces, banker green, parchment) |
+| `wrangler.toml` | Routes, DO bindings, D1, KV, crons |
+
+## D1 Schema (stock-pitch-db)
+
+Original tables: users, calls, prices, price_history, auth_tokens, portfolios, portfolio_positions, portfolio_followers, portfolio_nav_history, portals, portal_feedback, book_positions, portal_jobs, generation_queue
+
+**Migration 005 (Research Desk):** workflow_runs, workflow_outputs, lb_positions_cache
 
 ## Deploy
 
 ```bash
-nvm use 22
+source ~/.nvm/nvm.sh && nvm use 20
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt npx wrangler deploy
 ```
 
-Secrets needed: `ANTHROPIC_API_KEY` (for financials JSON fallback + agent)
+Secrets needed: `ANTHROPIC_API_KEY`, `SESSION_SECRET`
+Optional: `LIQUIDITYBOOK_CLIENT_ID`, `LIQUIDITYBOOK_CLIENT_SECRET` (for portfolio/morning workflows)
 
-## Current state (v0.18.0)
+## Wrangler Config
 
-**Working:**
-- 6 portals live (NVDA, GOOGL, AAPL, MSFT, AMZN, COST) — all tabs populated
-- Memo: 10-11K words, 200-370 source tags per ticker
-- Model page: 14-row financial tables (via Anthropic fallback)
-- Consensus: peer comps with live prices, PT + methodology
-- Deck: 8 slides with speaker notes
-- Research Library at /library with confidence-weighted long/short books
-- Claude-powered agent at /api/agent/research (native Anthropic SDK, tool calling works)
-- Batch queue: 50 QQQ+SPX tickers seeded (paused), cron every 3 min
-- Karpathy critic at /api/portal/critique scores 0-100
+- D1: stock-pitch-db (ec74e895)
+- KV: REQUESTS (3b589a51) — portal HTML cache + LB token cache
+- DOs: ResearchAgent (pitch agent), WorkflowAgent (research desk agent)
+- Workers AI + Browser Rendering bindings
+- Routes: levincap.com/stock-pitch/*, levincap.com/research/*, research.levincap.com/research/*
+- Crons: nightly price refresh (0 23 * * *), batch queue every 3 min (*/3 * * * *)
 
-**Just shipped (v0.18.0):**
-- Prompt quality overhaul — bold sub-headings, markdown tables, bullet lists, short paragraphs
-- portalMarkdown() now converts markdown tables to HTML
-- NVDA regenerating with new prompts (check results)
+## Current State (as of 2026-04-16)
 
-**Known issues:**
-- Workers AI has 24K token limit — context capped at 40K chars (22K mda + 10K risks + 8K 10q)
-- Workers AI drops concurrent calls to same model — all calls sequential within each phase
-- Think + external LLM providers broken (Zod v4 schema bug) — filed cloudflare/agents#1322
-- META CIK missing from ticker map — generation fails for META
-- Model page financials JSON fails ~50% on Workers AI, recovered by Anthropic fallback
+### Working
+- 6 stock pitch portals live (NVDA, GOOGL, AAPL, MSFT, AMZN, COST) — all tabs
+- Research Desk dashboard with all 10 workflow cards
+- All 10 workflow pages render correctly with Levin Capital branding
+- API endpoints return JSON on both levincap.com and workers.dev
+- WorkflowAgent DO deployed with SSE streaming support
+- LB client ported, position sync wired to cron (needs LB secrets set)
+- Auth: magic-link + JWT, session cookie works across both /stock-pitch and /research
 
-## What to work on next
+### Known Issues
+- Workflow runs require auth — no test run done yet (need to log in first)
+- LB secrets not yet set (`wrangler secret put LIQUIDITYBOOK_CLIENT_ID` etc.)
+- Workers AI 24K token limit constrains portal generation context
+- Think + external LLM providers broken (Zod v4 bug, cloudflare/agents#1322)
 
-1. **Check NVDA quality** after v0.18.0 prompt upgrade — screenshot memo, verify sub-headings/tables render
-2. **Wire inline SVG charts** into memo (code exists in `src/lib/charts.ts`, not yet called from portal-memo.ts)
-3. **Regenerate all 6 tickers** with the quality prompts
-4. **Resume batch queue** — unpause 49 tickers: `UPDATE generation_queue SET status = 'pending' WHERE status = 'paused'`
-5. **Think migration** — waiting on cloudflare/agents#1322 fix for Zod v4 + external providers
-6. **Improve memo template** — pagination/collapsible sections for long memos, key figure callout boxes
+### Taxonomy Decision Needed
+Currently:
+- research.levincap.com/ → Ratlinks magazine + static portals (lcs-portfolio-intel worker)
+- research.levincap.com/research → Research Desk (stock-pitch-web worker)
+- levincap.com/research → Research Desk (stock-pitch-web worker)
 
-## Wrangler config
+Desired (per Evan):
+- research.levincap.com → Research Desk (primary URL)
+- research.levincap.com/digest → Magazine (moved from root)
+- levincap.com/research → redirect to research.levincap.com
 
-D1: stock-pitch-db (ec74e895). KV: REQUESTS (3b589a51). Workers AI + Browser bindings.
-Routes: levincap.com/stock-pitch/*, research.levincap.com/stock-pitch/*
-Crons: nightly price refresh + batch queue every 3 min.
-DOs: ResearchAgent (Claude agent), WorkflowAgent.
+This requires updating lcs-portfolio-intel to move the magazine from / to /digest, and updating stock-pitch-web to serve research.levincap.com root.
 
-## Quick commands
+## What to Work on Next
+
+1. **Taxonomy swap** — make research.levincap.com the primary Research Desk URL, move magazine to /digest
+2. **Test end-to-end workflow** — log in, run Stock Screen for AAPL, verify SSE streaming + output
+3. **Set LB secrets** — `wrangler secret put LIQUIDITYBOOK_CLIENT_ID` and `LIQUIDITYBOOK_CLIENT_SECRET`
+4. **History page** — /research/history with search/filter by ticker, workflow, date
+5. **Portal generation from workflow output** — "Generate Portal" button chains to existing pipeline
+6. **Cross-workflow linking** — Coverage report can reference prior DCF/Comps for same ticker
+
+## Quick Commands
 
 ```bash
-# Regenerate a ticker
-curl -X POST -H 'Content-Type: application/json' -d '{"ticker":"NVDA"}' https://research.levincap.com/stock-pitch/generate
+# Deploy
+source ~/.nvm/nvm.sh && nvm use 20 && NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt npx wrangler deploy
 
-# Check quality
-curl -s https://research.levincap.com/stock-pitch/NVDA/memo | grep -oi "pending" | wc -l
+# Test API (should return {"error":"Unauthorized"})
+curl -s -X POST https://levincap.com/research/api/run -H 'Content-Type: application/json' -d '{"workflow":"screen","ticker":"AAPL"}'
 
-# Run agent
-curl -X POST -H 'Content-Type: application/json' -d '{"ticker":"META"}' https://research.levincap.com/stock-pitch/api/agent/research
+# Check research desk loads
+curl -sI https://levincap.com/research
 
-# Check batch status
-curl https://research.levincap.com/stock-pitch/api/batch/status
+# Regenerate a portal
+curl -X POST -H 'Content-Type: application/json' -d '{"ticker":"NVDA"}' https://levincap.com/stock-pitch/generate
 
-# Rebalance books
-curl -X POST https://research.levincap.com/stock-pitch/api/books/rebalance
+# Run research agent
+curl -X POST -H 'Content-Type: application/json' -d '{"ticker":"META"}' https://levincap.com/stock-pitch/api/agent/research
+
+# Apply D1 migration
+npx wrangler d1 execute stock-pitch-db --remote --file=src/db/migrations/005_research_desk.sql
 ```
