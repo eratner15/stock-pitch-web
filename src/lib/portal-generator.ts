@@ -384,7 +384,7 @@ ${researchCard}`;
   "bullPoints": ["6 bullets each 22-32 words citing a specific number from 10-K"],
   "bearPoints": ["4 bullets each 22-32 words citing a specific risk from Item 1A"]
 }`),
-    `Produce the THESIS SPINE JSON for ${r.ticker} — tagline, BLUF, bulls, bears. Concise and specific.\n\n${userWithFoundation}`,
+    `Produce the THESIS SPINE JSON for ${r.ticker} — tagline, BLUF, bulls, bears. Concise and specific.\n\n${userBase}`,
     { max_tokens: 2000, temperature: 0.5, timeoutMs: 50_000 }
   ),
     runModel(
@@ -395,7 +395,7 @@ ${researchCard}`;
   "keyMetrics": [{"label": "Shares Outstanding", "value": "X.XB", "source": "[10-K]"}],
   "dcfNarrative": "one paragraph, 80 words, on WACC + terminal growth + intrinsic anchor"
 }`),
-    `Produce the FINANCIALS JSON for ${r.ticker}. 3 historical rows, 3 projected rows, 4-6 keyMetrics.\n\n${userWithFoundation}`,
+    `Produce the FINANCIALS JSON for ${r.ticker}. 3 historical rows, 3 projected rows, 4-6 keyMetrics.\n\n${userBase}`,
     { max_tokens: 1400, temperature: 0.3, timeoutMs: 45_000 }
   ),
     runModel(
@@ -407,7 +407,7 @@ ${researchCard}`;
   "ourPt": "$XXX.XX — Y% upside",
   "ptMethodology": "one paragraph, 80 words"
 }`),
-    `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? `$${r.quote.price.toFixed(2)}` : 'n/a'}. Give 4-6 peer tickers.\n\n${userWithFoundation}`,
+    `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? `$${r.quote.price.toFixed(2)}` : 'n/a'}. Give 4-6 peer tickers.\n\n${userBase}`,
     { max_tokens: 1200, temperature: 0.5, timeoutMs: 45_000 }
   ),
   ]);
@@ -486,7 +486,8 @@ OUTPUT: 500-700 words. No heading. State PT explicitly. Show upside/downside vs 
       { max_tokens: 2400, temperature: 0.5, timeoutMs: 65_000 }
     ),
   ]);
-  const batch2 = Promise.all([
+  // Split batch2 into 2 sub-batches (5+4) to stay under Workers AI concurrency limit
+  const batch2a = Promise.all([
     // ---- Call A2: Supporting point #1 (plain markdown output) ----
     runModel(
     ai, PRIMARY_MODEL,
@@ -523,6 +524,8 @@ OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the 
     `Write the CATALYSTS section for ${r.ticker}. 5-7 time-bound events with specific calendar dates (e.g. "Q2 FY26 earnings · July 2026"). Each catalyst: what happens, price impact estimate, Street consensus vs our view. START IMMEDIATELY with the first catalyst heading — no introduction.\n\n${userWithFoundation}`,
     { max_tokens: 2800, temperature: 0.55, timeoutMs: 80_000, minChars: 300 }
   ),
+  ]);
+  const batch2b = Promise.all([
     // ---- Call A5: Third supporting deep dive (plain markdown) ----
     runModel(
       ai, PRIMARY_MODEL,
@@ -602,10 +605,11 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
   ),
   ]);
   // Phase 2+3 run in parallel (thesis spine already resolved in Phase 1)
-  // Run batch1 + batch3 in parallel, then batch2 (heaviest) sequentially
-  // to avoid Workers AI concurrency drops
+  // Run batch1 + batch3 in parallel, then batch2a + batch2b sequentially
   const [resolvedBatch1, resolvedBatch3] = await Promise.all([batch1, batch3]);
-  const resolvedBatch2 = await batch2;
+  const resolvedBatch2a = await batch2a;
+  const resolvedBatch2b = await batch2b;
+  const resolvedBatch2 = [...resolvedBatch2a, ...resolvedBatch2b];
   const [rawExec, rawBiz, rawSit, rawComp, rawVal, rawPt] = resolvedBatch1;
   const [rawA2, rawA3, rawA4risks, rawA4cats, rawA5, rawA6, rawMgmt, rawBridge, rawA8] = resolvedBatch2;
   const [rawD, rawE] = resolvedBatch3;
@@ -659,11 +663,40 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
   const support3Parsed = parseMarkdownSection(rawA5);
   const sotpParsed = parseMarkdownSection(rawA6);
   const mgmtParsed = parseMarkdownSection(rawMgmt);
-  const bridgeBody = rawBridge ? rawBridge.trim() : '';
+  let bridgeBody = rawBridge ? rawBridge.trim() : '';
   const competitiveParsed = parseMarkdownSection(rawA8);
   // financialsParsed + consensusParsed already parsed in Phase 1
   const deckParsed = parsePortalJson(rawD);
   const diligenceParsed = parsePortalJson(rawE);
+  // ── COMPLETENESS SWEEP — retry any section still empty ──
+  const sectionMap: Record<string, { body: string; prompt: string }> = {
+    support1: { body: support1Parsed.body || '', prompt: `Write the STRONGEST bull-case deep-dive for ${r.ticker}. 800-1000 words.\n\n${userWithFoundation}` },
+    support2: { body: support2Parsed.body || '', prompt: `Write the SECOND bull deep-dive for ${r.ticker}. 800-1000 words.\n\n${userWithFoundation}` },
+    support3: { body: support3Parsed.body || '', prompt: `Write a THIRD bull deep-dive for ${r.ticker}. 800-1000 words.\n\n${userWithFoundation}` },
+    sotp: { body: sotpParsed.body || '', prompt: `Sum-of-parts / hidden value deep-dive for ${r.ticker}. 800-1000 words.\n\n${userWithFoundation}` },
+    mgmt: { body: mgmtParsed.body || '', prompt: `Management + capital allocation for ${r.ticker}. 700-900 words.\n\n${userWithFoundation}` },
+    competitive: { body: competitiveParsed.body || '', prompt: `Competitive landscape for ${r.ticker}. 800-1000 words.\n\n${userWithFoundation}` },
+    bridge: { body: bridgeBody, prompt: `Revenue & earnings bridge for ${r.ticker}. 700-900 words.\n\n${userWithFoundation}` },
+  };
+
+  const incomplete = Object.entries(sectionMap).filter(([, v]) => v.body.length < 200);
+  if (incomplete.length > 0) {
+    console.log(`[portal][${r.ticker}] Completeness sweep: ${incomplete.length} sections need retry: ${incomplete.map(([k]) => k).join(', ')}`);
+    for (const [name, { prompt }] of incomplete) {
+      const retry = await runModel(ai, PRIMARY_MODEL, voiceWithSector + '\nOUTPUT FORMAT: FIRST line "# " + heading. Then 700-1000 words of institutional prose. 15+ source tags. No preamble.', prompt, { max_tokens: 3500, temperature: 0.6, timeoutMs: 90_000, minChars: 300 });
+      if (retry && retry.trim().length > 200) {
+        const parsed = parseMarkdownSection(retry);
+        if (name === 'support1') { support1Parsed.heading = parsed.heading || support1Parsed.heading; support1Parsed.body = parsed.body || support1Parsed.body; }
+        else if (name === 'support2') { support2Parsed.heading = parsed.heading || support2Parsed.heading; support2Parsed.body = parsed.body || support2Parsed.body; }
+        else if (name === 'support3') { support3Parsed.heading = parsed.heading || support3Parsed.heading; support3Parsed.body = parsed.body || support3Parsed.body; }
+        else if (name === 'sotp') { sotpParsed.heading = parsed.heading || sotpParsed.heading; sotpParsed.body = parsed.body || sotpParsed.body; }
+        else if (name === 'mgmt') { mgmtParsed.heading = parsed.heading || mgmtParsed.heading; mgmtParsed.body = parsed.body || mgmtParsed.body; }
+        else if (name === 'competitive') { competitiveParsed.heading = parsed.heading || competitiveParsed.heading; competitiveParsed.body = parsed.body || competitiveParsed.body; }
+        else if (name === 'bridge') { bridgeBody = retry.trim(); }
+        console.log(`[portal][${r.ticker}] Sweep: ${name} recovered (${retry.trim().length} chars)`);
+      }
+    }
+  }
   console.log(`[portal][${r.ticker}] All phases complete. Foundation → Prose → Polish.`);
 
   // Extract sidenote markers + strip them from the prose, collecting to sidebar
