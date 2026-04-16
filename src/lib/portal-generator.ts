@@ -89,9 +89,11 @@ export async function collectResearch(args: {
     filing_10k_date: tenK.filing?.filingDate ?? null,
     filing_10q_url: tenQ.filing?.documentUrl ?? null,
     filing_10q_date: tenQ.filing?.filingDate ?? null,
-    mda_excerpt: tenK.mda.slice(0, 55000),
-    risks_excerpt: tenK.risks.slice(0, 25000),
-    tenq_excerpt: tenQ.text.slice(0, 15000),
+    // Llama 3.3 70B context = 24K tokens ≈ 72K chars. With system prompt + output,
+    // user message budget is ~40K chars. Split: 22K mda + 10K risks + 8K 10q = 40K
+    mda_excerpt: tenK.mda.slice(0, 22000),
+    risks_excerpt: tenK.risks.slice(0, 10000),
+    tenq_excerpt: tenQ.text.slice(0, 8000),
     // Keep full raw 10-K for the fact verifier pass. Not passed into prompts.
     tenk_raw_for_verify: tenK.rawText || '',
     thesis: args.thesis ?? null,
@@ -412,9 +414,13 @@ ${researchCard}`;
   );
 
   // Parse foundation results → build context block for Phase 2
+  console.log(`[portal][${r.ticker}] Phase 1 raw: thesis=${(rawThesisSpine||'').length}c financials=${(rawFinancials||'').length}c consensus=${(rawConsensus||'').length}c`);
+  if ((rawFinancials||'').length < 50) console.log(`[portal][${r.ticker}] WARNING: financials JSON empty/short: "${(rawFinancials||'').slice(0,200)}"`);
+  if ((rawConsensus||'').length < 50) console.log(`[portal][${r.ticker}] WARNING: consensus JSON empty/short: "${(rawConsensus||'').slice(0,200)}"`);
   const thesisParsed = parsePortalJson(rawThesisSpine);
   const financialsParsed = parsePortalJson(rawFinancials);
   const consensusParsed = parsePortalJson(rawConsensus);
+  console.log(`[portal][${r.ticker}] Phase 1 parsed: hist=${(financialsParsed.historical||[]).length} proj=${(financialsParsed.projected||[]).length} peers=${(consensusParsed.peerTickers||[]).length} pt=${consensusParsed.ourPt||'none'}`);
   const foundationContext = `
 FOUNDATION — reference these in your section for consistency:
 THESIS: ${thesisParsed.tagline || ''} | BLUF: ${(thesisParsed.bluf || '').slice(0, 200)}
