@@ -375,9 +375,8 @@ ${researchCard}`;
   // and thesis. This replaces the old 3-parallel-batch approach.
   // ══════════════════════════════════════════════════════════════
 
-  // ── PHASE 1: FOUNDATION (thesis spine + financial model + consensus) ──
-  const [rawThesisSpine, rawFinancials, rawConsensus] = await Promise.all([
-    runModel(
+  // ── PHASE 1: FOUNDATION (sequential to avoid Workers AI concurrency drops) ──
+  const rawThesisSpine = await runModel(
     ai, PRIMARY_MODEL,
     sysJson(`{
   "tagline": "one-sentence pitch under 20 words, no period, specific claim",
@@ -387,9 +386,9 @@ ${researchCard}`;
 }`),
     `Produce the THESIS SPINE JSON for ${r.ticker} — tagline, BLUF, bulls, bears. Concise and specific.\n\n${userBase}`,
     { max_tokens: 2000, temperature: 0.5, timeoutMs: 50_000 }
-  ),
-    runModel(
-    ai, NUMBERS_MODEL,
+  );
+  const rawFinancials = await runModel(
+    ai, PRIMARY_MODEL,
     sysJson(`{
   "historical": [{"year": "FY23", "revenue": "$X.XB", "operatingIncome": "$X.XB", "eps": "$X.XX"}],
   "projected": [{"year": "FY26E", "revenue": "$X.XB", "ebitdaMargin": "X%", "eps": "$X.XX"}],
@@ -397,10 +396,10 @@ ${researchCard}`;
   "dcfNarrative": "one paragraph, 80 words, on WACC + terminal growth + intrinsic anchor"
 }`),
     `Produce the FINANCIALS JSON for ${r.ticker}. 3 historical rows, 3 projected rows, 4-6 keyMetrics.\n\n${userBase}`,
-    { max_tokens: 1400, temperature: 0.3, timeoutMs: 45_000 }
-  ),
-    runModel(
-    ai, NUMBERS_MODEL,
+    { max_tokens: 1400, temperature: 0.3, timeoutMs: 50_000 }
+  );
+  const rawConsensus = await runModel(
+    ai, PRIMARY_MODEL,
     sysJson(`{
   "streetView": "one paragraph, 60 words, with [Consensus] tags",
   "peerTickers": ["TICKER1", "TICKER2"],
@@ -409,9 +408,8 @@ ${researchCard}`;
   "ptMethodology": "one paragraph, 80 words"
 }`),
     `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? `$${r.quote.price.toFixed(2)}` : 'n/a'}. Give 4-6 peer tickers.\n\n${userBase}`,
-    { max_tokens: 1200, temperature: 0.5, timeoutMs: 45_000 }
-  ),
-  ]);
+    { max_tokens: 1200, temperature: 0.5, timeoutMs: 50_000 }
+  );
 
   // Parse foundation results → build context block for Phase 2
   const thesisParsed = parsePortalJson(rawThesisSpine);
