@@ -415,11 +415,20 @@ ${researchCard}`;
 
   // Parse foundation results → build context block for Phase 2
   console.log(`[portal][${r.ticker}] Phase 1 raw: thesis=${(rawThesisSpine||'').length}c financials=${(rawFinancials||'').length}c consensus=${(rawConsensus||'').length}c`);
-  if ((rawFinancials||'').length < 50) console.log(`[portal][${r.ticker}] WARNING: financials JSON empty/short: "${(rawFinancials||'').slice(0,200)}"`);
-  if ((rawConsensus||'').length < 50) console.log(`[portal][${r.ticker}] WARNING: consensus JSON empty/short: "${(rawConsensus||'').slice(0,200)}"`);
+  // Retry empty Phase 1 calls individually (most common failure mode)
+  let finalFinancials = rawFinancials;
+  let finalConsensus = rawConsensus;
+  if ((rawFinancials||'').length < 50) {
+    console.log(`[portal][${r.ticker}] Financials empty (${(rawFinancials||'').length}c), retrying...`);
+    finalFinancials = await runModel(ai, PRIMARY_MODEL, sysJson(`{"historical":[{"year":"FY23","revenue":"$X.XB","operatingIncome":"$X.XB","eps":"$X.XX"}],"projected":[{"year":"FY26E","revenue":"$X.XB","ebitdaMargin":"X%","eps":"$X.XX"}],"keyMetrics":[{"label":"Metric","value":"X","source":"[10-K]"}],"dcfNarrative":"80 words on WACC + terminal growth"}`), `Produce FINANCIALS JSON for ${r.ticker}. 3 historical, 3 projected, 4-6 keyMetrics.\n\nCompany: ${r.company}\nPrice: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}\n10-K MD&A excerpt:\n${r.mda_excerpt.slice(0, 8000)}`, { max_tokens: 1400, temperature: 0.3, timeoutMs: 50_000 });
+  }
+  if ((rawConsensus||'').length < 50) {
+    console.log(`[portal][${r.ticker}] Consensus empty (${(rawConsensus||'').length}c), retrying...`);
+    finalConsensus = await runModel(ai, PRIMARY_MODEL, sysJson(`{"streetView":"60 words with [Consensus] tags","peerTickers":["TICKER1","TICKER2"],"peerNote":"80 words","ourPt":"$XXX — Y% upside","ptMethodology":"80 words"}`), `Produce CONSENSUS JSON for ${r.ticker}. Current price ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}. 4-6 peer tickers.\n\nCompany: ${r.company}\n10-K excerpt:\n${r.mda_excerpt.slice(0, 5000)}`, { max_tokens: 1200, temperature: 0.5, timeoutMs: 50_000 });
+  }
   const thesisParsed = parsePortalJson(rawThesisSpine);
-  const financialsParsed = parsePortalJson(rawFinancials);
-  const consensusParsed = parsePortalJson(rawConsensus);
+  const financialsParsed = parsePortalJson(finalFinancials);
+  const consensusParsed = parsePortalJson(finalConsensus);
   console.log(`[portal][${r.ticker}] Phase 1 parsed: hist=${(financialsParsed.historical||[]).length} proj=${(financialsParsed.projected||[]).length} peers=${(consensusParsed.peerTickers||[]).length} pt=${consensusParsed.ourPt||'none'}`);
   const foundationContext = `
 FOUNDATION — reference these in your section for consistency:
