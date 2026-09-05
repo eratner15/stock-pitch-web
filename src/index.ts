@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { routeAgentRequest } from 'agents';
+import { workspace, memberRole } from './routes/research-workspace';
 export { ResearchAgent } from './agents/research-agent';
 export { WorkflowAgent } from './agents/workflow-agent';
 import puppeteer from '@cloudflare/puppeteer';
@@ -51,7 +51,7 @@ import { renderResearchDesk } from './pages/research-desk';
 import { renderWorkflowRun, renderRunDetail } from './pages/workflow-run';
 import { WORKFLOWS, isValidWorkflow, type WorkflowSlug } from './lib/workflow-config';
 
-interface Env {
+export interface Env {
   DB: D1Database;
   REQUESTS: KVNamespace;
   AI: any;
@@ -63,6 +63,8 @@ interface Env {
   ADMIN_KEY?: string;
   FMP_API_KEY?: string;
   SESSION_SECRET?: string;
+  RESEARCH_CATALOG?: Fetcher;
+  RESEARCH_PUBLICATION_ENABLED?: string;
   // MailChannels email
   MAILCHANNELS_API_KEY?: string;
   MAIL_FROM_ADDRESS?: string;
@@ -184,6 +186,18 @@ function authRedirect(c: any, next: string) {
 }
 
 // Dashboard — accessible without auth (shows empty recent list), auth required to run workflows
+app.route('/research/workspace', workspace);
+app.get('/research/workspace/', c => c.redirect('/research/workspace',308));
+
+// Only explicitly approved public revisions are readable without team access.
+app.get('/research/published/:id', async c => {
+  c.header('cache-control', 'no-store');
+  const row = await c.env.DB.prepare("SELECT id,document_id,company_id,ticker,title,body,source_json,published_at,revised_at FROM research_revisions WHERE id = ? AND status = 'published' AND visibility = 'public'").bind(c.req.param('id')).first<any>();
+  if (!row) return c.text('Not found',404);
+  const urls: string[] = JSON.parse(row.source_json).urls || [];
+  return c.html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(row.title)}</title><body style="max-width:850px;margin:32px auto;padding:20px;background:#faf7f0;color:#13243c;font:18px/1.6 Georgia"><a href="https://research.levincap.com/">The Signal</a><h1>${escapeHtml(row.title)}</h1><p>Published ${escapeHtml(row.published_at)} · Research snapshot, not an automatic current house view.</p><pre style="white-space:pre-wrap;font:inherit">${escapeHtml(row.body)}</pre><h2>Sources</h2><ul>${urls.map(u=>`<li><a href="${escapeHtml(u)}">${escapeHtml(u)}</a></li>`).join('')}</ul></body></html>`);
+});
+
 app.get('/research', async (c) => {
   const user = c.get('user');
   let recentRuns: any[] = [];
@@ -239,6 +253,7 @@ app.post('/research/api/run', async (c) => {
   const { workflow, ticker, context } = body;
   if (!workflow || !isValidWorkflow(workflow)) return c.json({ error: 'Invalid workflow' }, 400);
   const config = WORKFLOWS[workflow as WorkflowSlug];
+  if (config.tools.includes('get_lb_positions') && !await memberRole(c.env.DB,user.id)) return c.json({error:'Team membership required'},403);
   if (config.requiresTicker && !ticker) return c.json({ error: 'Ticker required' }, 400);
   const safeTicker = ticker ? String(ticker).toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10) : null;
   const runId = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
@@ -253,9 +268,13 @@ app.post('/research/api/run/:id/stream', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const runId = c.req.param('id');
-  const body = await c.req.json().catch(() => ({} as any));
-  const { workflow, ticker, context } = body;
+  const run = await c.env.DB.prepare('SELECT workflow,ticker,input_params,status FROM workflow_runs WHERE id = ? AND user_id = ?').bind(runId,user.id).first<any>();
+  if (!run) return c.json({error:'Not found'},404);
+  if (!['running','failed'].includes(run.status)) return c.json({error:'Run is not available for generation'},409);
+  const { workflow, ticker } = run;
+  const { context } = JSON.parse(run.input_params || '{}');
   if (!workflow || !isValidWorkflow(workflow)) return c.json({ error: 'Invalid workflow' }, 400);
+  if (WORKFLOWS[workflow as WorkflowSlug].tools.includes('get_lb_positions') && !await memberRole(c.env.DB,user.id)) return c.json({error:'Team membership required'},403);
   const safeTicker = ticker ? String(ticker).toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10) : '';
 
   // Name the DO by workflow:ticker:user for per-user isolation
@@ -295,6 +314,8 @@ app.get('/research/api/run/:id', async (c) => {
 app.get('/research/api/positions', async (c) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
+  c.header('cache-control','private, no-store');
+  if (!await memberRole(c.env.DB,user.id)) return c.json({error:'Team membership required'},403);
   const { results } = await c.env.DB.prepare(
     'SELECT * FROM lb_positions_cache ORDER BY market_value DESC LIMIT 100'
   ).all();
@@ -303,8 +324,8 @@ app.get('/research/api/positions', async (c) => {
 
 // API: Force LB sync (admin only)
 app.post('/research/api/lb-sync', async (c) => {
-  const key = c.req.header('x-admin-key') || c.req.query('key');
-  if (key !== c.env.ADMIN_KEY) return c.json({ error: 'Unauthorized' }, 401);
+  const key = c.req.header('x-admin-key');
+  if (!c.env.ADMIN_KEY || !key || key !== c.env.ADMIN_KEY) return c.json({ error: 'Unauthorized' }, 401);
   if (!c.env.LIQUIDITYBOOK_CLIENT_ID) return c.json({ error: 'LB not configured' }, 400);
   const { syncLBPositions } = await import('./lib/lb-client');
   const count = await syncLBPositions(c.env as any);
@@ -1809,17 +1830,9 @@ async function mountedFetch(request: Request, env: Env, ctx: ExecutionContext): 
   // Route agent WebSocket + API requests before Hono
   const reqUrl = new URL(request.url);
   if (reqUrl.pathname.startsWith('/agents/')) {
-    console.log(`[agent-route] path=${reqUrl.pathname} upgrade=${request.headers.get('upgrade')} method=${request.method}`);
-    try {
-      const agentResp = await routeAgentRequest(request, env);
-      if (agentResp) {
-        console.log(`[agent-route] returned ${agentResp.status}`);
-        return agentResp;
-      }
-    } catch (e) {
-      console.error('[agent-route] threw:', e);
-      return new Response('Agent routing error: ' + String(e), { status: 500 });
-    }
+    // Public agent names are not authorization. Research goes through owned,
+    // authenticated application endpoints; direct DO routing is disabled.
+    return new Response('Not found', {status:404,headers:{'cache-control':'private, no-store'}});
   }
 
   const url = new URL(request.url);
