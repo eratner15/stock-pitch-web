@@ -119,6 +119,8 @@ app.use('*', async (c, next) => {
   } else {
     c.set('user', null);
   }
+  // Existing run history/results can contain private source material too.
+  if (new URL(c.req.url).pathname.startsWith('/research')) c.header('cache-control','private, no-store');
   await next();
 });
 
