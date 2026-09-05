@@ -4,6 +4,7 @@
  * Will migrate to Think once upstream fix ships.
  */
 import { DurableObject } from 'cloudflare:workers';
+import type { Env } from '../index';
 import Anthropic from '@anthropic-ai/sdk';
 import { fetchPrice } from '../lib/prices';
 import { getCik, fetchLatest10K, fetchLatest10Q } from '../lib/edgar';

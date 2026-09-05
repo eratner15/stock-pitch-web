@@ -4,6 +4,7 @@
  * Native Anthropic SDK (same as research-agent.ts).
  */
 import { DurableObject } from 'cloudflare:workers';
+import type { Env } from '../index';
 import Anthropic from '@anthropic-ai/sdk';
 import { fetchPrice } from '../lib/prices';
 import { getCik, fetchLatest10K, fetchLatest10Q } from '../lib/edgar';
@@ -94,6 +95,7 @@ export class WorkflowAgent extends DurableObject<Env> {
       loops++;
       const toolBlocks = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
       const results = await Promise.all(toolBlocks.map(async (block) => {
+        if (!config.tools.includes(block.name)) throw new Error('Tool not authorized for this workflow');
         const result = await this.executeTool(block.name, block.input as any);
         toolLog.push({
           tool: block.name,
@@ -187,6 +189,7 @@ export class WorkflowAgent extends DurableObject<Env> {
             }
 
             const results = await Promise.all(toolBlocks.map(async (block) => {
+              if (!config.tools.includes(block.name)) throw new Error('Tool not authorized for this workflow');
               const result = await agent.executeTool(block.name, block.input as any);
               const event: ToolEvent = {
                 tool: block.name,
