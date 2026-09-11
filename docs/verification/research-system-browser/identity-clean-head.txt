@@ -1,0 +1,360 @@
+
+> stock-pitch-web@0.1.0 verify
+> npm run type-check && npm test && wrangler deploy --dry-run
+
+
+> stock-pitch-web@0.1.0 type-check
+> tsc --noEmit
+
+
+> stock-pitch-web@0.1.0 test
+> node --test tests/*.test.mjs
+
+TAP version 13
+# Subtest: partial registries preserve identity and exclude private or hostile links
+ok 1 - partial registries preserve identity and exclude private or hostile links
+  ---
+  duration_ms: 62.017938
+  type: 'test'
+  ...
+# [portal] generation failed Error: Publication blocked: rating unresolved
+#     at assertPortalProvenance (script-0:21294:58)
+#     at generatePortal (script-0:56365:5)
+#     at async script-0:55982:5
+#     at async dispatch (script-0:21324:17)
+#     at async script-0:55087:3
+#     at async dispatch (script-0:21324:17)
+#     at async script-0:22649:26
+#     at async Object.mountedFetch [as fetch] (script-0:56449:16)
+# [portal] inline generation failed Error: Publication blocked: rating unresolved
+#     at assertPortalProvenance (script-0:21294:58)
+#     at generatePortal (script-0:56365:5)
+#     at async script-0:55982:5
+#     at async dispatch (script-0:21324:17)
+#     at async script-0:55087:3
+#     at async dispatch (script-0:21324:17)
+#     at async script-0:22649:26
+#     at async Object.mountedFetch [as fetch] (script-0:56449:16)
+# Subtest: actual generation route rejects provenance failure without publishing pages or catalog row
+ok 2 - actual generation route rejects provenance failure without publishing pages or catalog row
+  ---
+  duration_ms: 3450.694567
+  type: 'test'
+  ...
+# Subtest: PDF upload preserves exact original hash and offers attachment-only private retrieval
+ok 3 - PDF upload preserves exact original hash and offers attachment-only private retrieval
+  ---
+  duration_ms: 2183.739461
+  type: 'test'
+  ...
+# Subtest: real XLSX fixture passes container recognition without claiming extraction or calculation
+ok 4 - real XLSX fixture passes container recognition without claiming extraction or calculation
+  ---
+  duration_ms: 178.627032
+  type: 'test'
+  ...
+# Subtest: authentication, membership and same-origin checks run before original ingestion or reads
+ok 5 - authentication, membership and same-origin checks run before original ingestion or reads
+  ---
+  duration_ms: 140.522646
+  type: 'test'
+  ...
+# Subtest: text cannot impersonate a PDF, and declared file MIME must match source metadata
+ok 6 - text cannot impersonate a PDF, and declared file MIME must match source metadata
+  ---
+  duration_ms: 286.289363
+  type: 'test'
+  ...
+# Subtest: multipart control fields and duplicate files cannot bypass the fixed upload contract
+ok 7 - multipart control fields and duplicate files cannot bypass the fixed upload contract
+  ---
+  duration_ms: 102.344997
+  type: 'test'
+  ...
+# Subtest: oversize files and multipart bodies fail explicitly without persisting a source
+ok 8 - oversize files and multipart bodies fail explicitly without persisting a source
+  ---
+  duration_ms: 116.617429
+  type: 'test'
+  ...
+# Subtest: checksums and existing source IDs remain immutable for binary inputs
+ok 9 - checksums and existing source IDs remain immutable for binary inputs
+  ---
+  duration_ms: 186.825592
+  type: 'test'
+  ...
+# Subtest: generic, unsafe, macro-like and truncated ZIP containers do not pass as XLSX
+ok 10 - generic, unsafe, macro-like and truncated ZIP containers do not pass as XLSX
+  ---
+  duration_ms: 4.254918
+  type: 'test'
+  ...
+# Subtest: workbook_import cells keep immutable original linkage, zero, formulas, errors and injection text
+ok 11 - workbook_import cells keep immutable original linkage, zero, formulas, errors and injection text
+  ---
+  duration_ms: 606.870832
+  type: 'test'
+  ...
+# Subtest: cell manifests cannot spoof lineage, suppress errors or certify formula caches
+ok 12 - cell manifests cannot spoof lineage, suppress errors or certify formula caches
+  ---
+  duration_ms: 680.646899
+  type: 'test'
+  ...
+# Subtest: package identity, aliases, currency, periods and revision references are validated
+ok 13 - package identity, aliases, currency, periods and revision references are validated
+  ---
+  duration_ms: 3280.365657
+  type: 'test'
+  ...
+# Subtest: typed verification rejects coincidental numbers and normalizes scales and signs
+ok 14 - typed verification rejects coincidental numbers and normalizes scales and signs
+  ---
+  duration_ms: 20.743879
+  type: 'test'
+  ...
+# Subtest: immutable evidence preserves duplicate content, timestamps and rights explicitly
+ok 15 - immutable evidence preserves duplicate content, timestamps and rights explicitly
+  ---
+  duration_ms: 389.538859
+  type: 'test'
+  ...
+# Subtest: workspace package ingestion binds exact author, revision and immutable sources
+ok 16 - workspace package ingestion binds exact author, revision and immutable sources
+  ---
+  duration_ms: 566.402673
+  type: 'test'
+  ...
+# Subtest: rights expiry uses instants across timezone offsets
+ok 17 - rights expiry uses instants across timezone offsets
+  ---
+  duration_ms: 0.557889
+  type: 'test'
+  ...
+# Subtest: registry preserves explicit IDs and legacy unresolved rows, with authenticated registration
+ok 18 - registry preserves explicit IDs and legacy unresolved rows, with authenticated registration
+  ---
+  duration_ms: 2529.346292
+  type: 'test'
+  ...
+# Subtest: same ticker across markets is ambiguous, same-market overlap rejected atomically
+ok 19 - same ticker across markets is ambiguous, same-market overlap rejected atomically
+  ---
+  duration_ms: 683.496275
+  type: 'test'
+  ...
+# Subtest: audited rename resolves historical dates and does not overwrite security identity
+ok 20 - audited rename resolves historical dates and does not overwrite security identity
+  ---
+  duration_ms: 609.265232
+  type: 'test'
+  ...
+# Subtest: absent, empty and malformed metadata remains unresolved; zero survives
+ok 21 - absent, empty and malformed metadata remains unresolved; zero survives
+  ---
+  duration_ms: 36.64247
+  type: 'test'
+  ...
+# Subtest: publication rejects unresolved metadata and unavailable cited filings
+ok 22 - publication rejects unresolved metadata and unavailable cited filings
+  ---
+  duration_ms: 1.944991
+  type: 'test'
+  ...
+# Subtest: failed and malformed price lookups remain null, including strict demo option
+ok 23 - failed and malformed price lookups remain null, including strict demo option
+  ---
+  duration_ms: 82.693619
+  type: 'test'
+  ...
+# Subtest: configuration is not an entitlement and missing credentials never fetch
+ok 24 - configuration is not an entitlement and missing credentials never fetch
+  ---
+  duration_ms: 23.380837
+  type: 'test'
+  ...
+# Subtest: read-only fixed origins, no redirects or credential reflection
+ok 25 - read-only fixed origins, no redirects or credential reflection
+  ---
+  duration_ms: 49.891755
+  type: 'test'
+  ...
+# Subtest: Levy discovery returns only internal locators, never mail content
+ok 26 - Levy discovery returns only internal locators, never mail content
+  ---
+  duration_ms: 13.382815
+  type: 'test'
+  ...
+# Subtest: foreign issuer forms and freshness remain explicit
+ok 27 - foreign issuer forms and freshness remain explicit
+  ---
+  duration_ms: 3.753213
+  type: 'test'
+  ...
+# Subtest: provider application errors and missing macro observations do not become zero
+ok 28 - provider application errors and missing macro observations do not become zero
+  ---
+  duration_ms: 10.209667
+  type: 'test'
+  ...
+# Subtest: review preserves an explicit unrated judgment and never derives a recommendation
+ok 29 - review preserves an explicit unrated judgment and never derives a recommendation
+  ---
+  duration_ms: 727.655686
+  type: 'test'
+  ...
+# Subtest: text facts require text units and cannot masquerade as missing numeric facts
+ok 30 - text facts require text units and cannot masquerade as missing numeric facts
+  ---
+  duration_ms: 23.190203
+  type: 'test'
+  ...
+# Subtest: named analyst identity and target must resolve to the same verified dated report
+ok 31 - named analyst identity and target must resolve to the same verified dated report
+  ---
+  duration_ms: 12.995318
+  type: 'test'
+  ...
+# Subtest: new rubric references are checked by the package schema before review
+ok 32 - new rubric references are checked by the package schema before review
+  ---
+  duration_ms: 8.88923
+  type: 'test'
+  ...
+# Subtest: quantified comparison matches metric, dimensions, source kind and derived arithmetic
+ok 33 - quantified comparison matches metric, dimensions, source kind and derived arithmetic
+  ---
+  duration_ms: 10.874369
+  type: 'test'
+  ...
+# Subtest: consensus-aligned and unavailable cases cannot be called differentiated
+ok 34 - consensus-aligned and unavailable cases cannot be called differentiated
+  ---
+  duration_ms: 5.764429
+  type: 'test'
+  ...
+# Subtest: confirmed catalyst requires a typed source observation for the exact event and date
+ok 35 - confirmed catalyst requires a typed source observation for the exact event and date
+  ---
+  duration_ms: 12.567841
+  type: 'test'
+  ...
+# Subtest: estimated dates require assumptions and unresolved timing cannot imply confirmation
+ok 36 - estimated dates require assumptions and unresolved timing cannot imply confirmation
+  ---
+  duration_ms: 3.961892
+  type: 'test'
+  ...
+# Subtest: directional stances require future horizon, confidence, supporting claims and owned tests
+ok 37 - directional stances require future horizon, confidence, supporting claims and owned tests
+  ---
+  duration_ms: 13.52146
+  type: 'test'
+  ...
+# Subtest: supporting facts from another security or unresolved source cannot substantiate a claim
+ok 38 - supporting facts from another security or unresolved source cannot substantiate a claim
+  ---
+  duration_ms: 2.963419
+  type: 'test'
+  ...
+# Subtest: every portal primary and fallback system includes the same canonical rubric
+ok 39 - every portal primary and fallback system includes the same canonical rubric
+  ---
+  duration_ms: 1.658256
+  type: 'test'
+  ...
+# Subtest: package-linked tracker imports idempotently with explicit unknowns and safe CSV
+ok 40 - package-linked tracker imports idempotently with explicit unknowns and safe CSV
+  ---
+  duration_ms: 2953.428301
+  type: 'test'
+  ...
+# Subtest: outcomes and corrections append without rewriting old forecasts, with CAS and ownership
+ok 41 - outcomes and corrections append without rewriting old forecasts, with CAS and ownership
+  ---
+  duration_ms: 1567.597699
+  type: 'test'
+  ...
+# Subtest: real Worker dispatch validates signed session, membership and alternate hosts
+ok 42 - real Worker dispatch validates signed session, membership and alternate hosts
+  ---
+  duration_ms: 3125.581002
+  type: 'test'
+  ...
+# Subtest: public revision lookup excludes draft/private; withdrawal is immediate
+ok 43 - public revision lookup excludes draft/private; withdrawal is immediate
+  ---
+  duration_ms: 143.497884
+  type: 'test'
+  ...
+# Subtest: team access, alternate host-independent guard and no-store
+ok 44 - team access, alternate host-independent guard and no-store
+  ---
+  duration_ms: 3227.701055
+  type: 'test'
+  ...
+# Subtest: ETF dates, types, weights and source URLs are validated
+ok 45 - ETF dates, types, weights and source URLs are validated
+  ---
+  duration_ms: 1.862906
+  type: 'test'
+  ...
+# Subtest: snapshot imports are durable and idempotent
+ok 46 - snapshot imports are durable and idempotent
+  ---
+  duration_ms: 215.034615
+  type: 'test'
+  ...
+# {"event":"research_publication_transition","action":"submit","revisionId":"15fd296a-f39b-4214-8e92-3c78094d5d29","changed":1}
+# {"event":"research_publication_transition","action":"approve","revisionId":"15fd296a-f39b-4214-8e92-3c78094d5d29","changed":1}
+# {"event":"research_publication_transition","action":"submit","revisionId":"15fd296a-f39b-4214-8e92-3c78094d5d29","changed":1}
+# {"event":"research_publication_transition","action":"approve","revisionId":"15fd296a-f39b-4214-8e92-3c78094d5d29","changed":1}
+# {"event":"research_publication_transition","action":"publish","revisionId":"15fd296a-f39b-4214-8e92-3c78094d5d29","changed":1}
+# {"event":"research_publication_transition","action":"withdraw","revisionId":"15fd296a-f39b-4214-8e92-3c78094d5d29","changed":1}
+# Subtest: draft → independent review → gated publication; edits invalidate approval; withdrawals remove catalog entry
+ok 47 - draft → independent review → gated publication; edits invalidate approval; withdrawals remove catalog entry
+  ---
+  duration_ms: 1838.002753
+  type: 'test'
+  ...
+# Subtest: generation failure is visible and retries reuse the revision
+ok 48 - generation failure is visible and retries reuse the revision
+  ---
+  duration_ms: 411.427086
+  type: 'test'
+  ...
+# Subtest: ambiguous aliases save unique provisional drafts and require author resolution
+ok 49 - ambiguous aliases save unique provisional drafts and require author resolution
+  ---
+  duration_ms: 1105.016235
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8008.353691
+
+ ⛅️ wrangler 4.82.2 (update available 4.131.0)
+──────────────────────────────────────────────
+
+Cloudflare collects anonymous telemetry about your usage of Wrangler. Learn more at https://github.com/cloudflare/workers-sdk/tree/main/packages/wrangler/telemetry.md
+Total Upload: 2233.63 KiB / gzip: 436.33 KiB
+Your Worker has access to the following bindings:
+Binding                                                                  Resource                  
+env.ResearchAgent (ResearchAgent)                                        Durable Object            
+env.WorkflowAgent (WorkflowAgent)                                        Durable Object            
+env.REQUESTS (3b589a51483143e399b7f69ccaf2d6f0)                          KV Namespace              
+env.DB (stock-pitch-db)                                                  D1 Database               
+env.RESEARCH_CATALOG (lcs-portfolio-intel)                               Worker                    
+env.RESEARCH_LEGACY (levincap-research)                                  Worker                    
+env.BROWSER                                                              Browser                   
+env.AI                                                                   AI                        
+env.ENVIRONMENT ("production")                                           Environment Variable      
+env.RESEARCH_PUBLICATION_ENABLED ("false")                               Environment Variable      
+
+--dry-run: exiting now.

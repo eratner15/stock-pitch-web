@@ -34,3 +34,8 @@ provisional, then resolves through the UI after registry entry, preserving its
 saved body while incrementing the version and clearing approval. Unit tests cover
 cross-exchange ambiguity/share classes, unique provisional IDs, explicit security
 selection, author-only resolution, stale versions and published-edit denial.
+
+Committed-source check: a clean `git archive` of fe356f4 (including binary-evidence
+commit5f689b5 and identity registry25a5283) passed `npm run verify`: all49 tests,
+TypeScript and Wrangler dry-run. No uncommitted source files were required; only
+installed node_modules were shared. Log: identity-clean-head.txt. No deployment.
