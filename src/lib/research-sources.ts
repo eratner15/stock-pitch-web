@@ -1,15 +1,16 @@
 import { sourceSchema, type ResearchSource } from './research-package';
 import { z } from 'zod';
 export const MAX_ORIGINAL_BYTES = 262144;
+export const MAX_R2_ORIGINAL_BYTES = 20*1024*1024;
 export const PDF_MIME = 'application/pdf';
 export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export class EvidenceInputError extends Error {
-  constructor(message:string, public status:400|413|415 = 400) { super(message); this.name = 'EvidenceInputError'; }
+  constructor(message:string, public status:400|413|415|503 = 400) { super(message); this.name = 'EvidenceInputError'; }
 }
 
 /** Container recognition only: no PDF execution, ZIP extraction or formula evaluation. */
-export function inspectBinaryOriginal(bytes:Uint8Array,mime:string):{format:'pdf'|'xlsx';check:'signature_and_container';extraction:'not_performed'} {
-  if (!bytes.length || bytes.length > MAX_ORIGINAL_BYTES) throw new EvidenceInputError('Original must be 1–262144 bytes; larger sources require configured private object storage',413);
+export function inspectBinaryOriginal(bytes:Uint8Array,mime:string,maxBytes=MAX_ORIGINAL_BYTES):{format:'pdf'|'xlsx';check:'signature_and_container';extraction:'not_performed'} {
+  if (!bytes.length || bytes.length > maxBytes) throw new EvidenceInputError('Original exceeds the configured storage limit',413);
   if (mime === PDF_MIME) {
     const prefix = new TextDecoder('ascii').decode(bytes.slice(0, 12));
     const tail = new TextDecoder('ascii').decode(bytes.slice(-1024));
@@ -54,7 +55,7 @@ const cellSchema = z.object({id:z.string().max(200),sheet:z.string().min(1).max(
 export const workbookExtractionSchema = z.object({schema_version:z.literal(1),source_id:z.string().regex(/^sha256:[a-f0-9]{64}$/),filename:z.string().min(1).max(255),usage_rights:z.literal('unknown'),visibility:z.literal('restricted_client'),recalculation:z.literal('not_performed'),has_macros:z.boolean(),external_links:z.number().int().min(0),cells:z.array(cellSchema).max(5000),issues:z.array(z.object({code:z.enum(['MACROS_PRESENT','EXTERNAL_LINKS','STORED_ERROR','MISSING_FORMULA_CACHE','EXTERNAL_FORMULA_REFERENCE']),cell_id:z.string().max(200).optional()}).strict()).max(10000),financial_mapping_status:z.literal('requires_analyst_mapping'),clean_validation:z.literal(false)}).strict();
 
 /** Preserve an asserted extraction separately; do not promote caches into facts. */
-export async function ingestWorkbookExtraction(db:D1Database,original:ResearchSource,input:unknown,actor:string) {
+export async function ingestWorkbookExtraction(db:D1Database,original:ResearchSource,input:unknown,actor:string,bucket?:R2Bucket) {
   const stored=await getSource(db,original.source_id);
   if (!stored || JSON.stringify(stored)!==JSON.stringify(original)) throw new EvidenceInputError('Workbook original must match the immutable source ledger');
   if (original.mime_type!==XLSX_MIME) throw new EvidenceInputError('Workbook cell extraction requires a stored XLSX original',415);
@@ -80,24 +81,59 @@ export async function ingestWorkbookExtraction(db:D1Database,original:ResearchSo
   const hash=await checksum(bytes);
   const sourceKey=await checksum(new TextEncoder().encode(`${original.source_id}\n${hash}`));
   const metadata={...original,source_type:'supplied_workbook',source_id:`workbook-cells:${sourceKey}`,checksum:hash,document_title:`Workbook cell extraction: ${extraction.filename}`,uri_or_file:`evidence:${original.source_id}#sha256:${original.checksum}`,locator:null,mime_type:'application/json',quality_status:'partial',usage_rights:'restricted',rights_scope:'Internal extraction metadata; original rights still apply. Cell assertions have not been independently verified.',published_at:null};
-  const source=await ingestSource(db,metadata,bytes,actor);
+  const source=await ingestSource(db,metadata,bytes,actor,bucket);
   return {source,original_source_id:original.source_id,original_checksum:original.checksum,cell_count:extraction.cells.length,extraction_validation:'lineage_and_contract_only',financial_mapping_status:extraction.financial_mapping_status,recalculation:'not_performed',clean_validation:false};
 }
 export async function checksum(bytes:Uint8Array):Promise<string>{return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes as BufferSource)),b=>b.toString(16).padStart(2,'0')).join('');}
 /** D1 stores bounded originals; larger files need a configured private object store. */
-export async function ingestSource(db:D1Database,input:unknown,bytes:Uint8Array,actor:string):Promise<ResearchSource>{
+export async function ingestSource(db:D1Database,input:unknown,bytes:Uint8Array,actor:string,bucket?:R2Bucket):Promise<ResearchSource>{
+  if(bytes.length>MAX_ORIGINAL_BYTES)return ingestLargeSource(db,input,bytes,actor,bucket);
   if(!bytes.length||bytes.length>MAX_ORIGINAL_BYTES)throw new EvidenceInputError('Original must be 1–262144 bytes; larger sources require private object storage',413);
   const parsed=sourceSchema.parse(input);
   const hash=await checksum(bytes);
   if(parsed.checksum!==hash)throw new Error('Source checksum does not match original');
   const stamp=new Date().toISOString();
-  const existing=await db.prepare('SELECT metadata_json FROM research_sources WHERE source_id=?').bind(parsed.source_id).first<{metadata_json:string}>();
-  if(existing){if(existing.metadata_json!==JSON.stringify(parsed))throw new Error('Source ID is immutable');return parsed;}
+  const existing=await getSource(db,parsed.source_id);
+  if(existing){if(JSON.stringify(existing)!==JSON.stringify(parsed))throw new Error('Source ID is immutable');return parsed;}
   await db.batch([
     db.prepare('INSERT OR IGNORE INTO research_source_objects(checksum,original,byte_length,created_at) VALUES (?,?,?,?)').bind(hash,Array.from(bytes),bytes.length,stamp),
     db.prepare('INSERT INTO research_sources(source_id,checksum,metadata_json,created_by,created_at) VALUES (?,?,?,?,?)').bind(parsed.source_id,hash,JSON.stringify(parsed),actor,stamp)
   ]);
   return parsed;
 }
-export async function getSource(db:D1Database,id:string):Promise<ResearchSource|null>{const row=await db.prepare('SELECT metadata_json FROM research_sources WHERE source_id=?').bind(id).first<{metadata_json:string}>();return row?sourceSchema.parse(JSON.parse(row.metadata_json)):null;}
+/** Missing optional migration is tolerated only when reading the original D1 path. */
+async function optionalR2Source(db:D1Database,id:string){
+ try{return await db.prepare('SELECT metadata_json FROM research_r2_sources WHERE source_id=?').bind(id).first<{metadata_json:string}>();}
+ catch(error){if(String(error).includes('no such table: research_r2_sources'))return null;throw error;}
+}
+export async function getSource(db:D1Database,id:string):Promise<ResearchSource|null>{const row=await db.prepare('SELECT metadata_json FROM research_sources WHERE source_id=?').bind(id).first<{metadata_json:string}>()??await optionalR2Source(db,id);return row?sourceSchema.parse(JSON.parse(row.metadata_json)):null;}
+async function checkedR2Bytes(bucket:R2Bucket,key:string,hash:string,size:number):Promise<Uint8Array>{
+ const object=await bucket.get(key);if(!object||object.size!==size||object.size>MAX_R2_ORIGINAL_BYTES)throw new EvidenceInputError('Stored original is missing or has an invalid size',503);
+ const bytes=new Uint8Array(await object.arrayBuffer());if(await checksum(bytes)!==hash)throw new EvidenceInputError('Stored original checksum failed; retrieval blocked',503);return bytes;
+}
+async function ingestLargeSource(db:D1Database,input:unknown,bytes:Uint8Array,actor:string,bucket?:R2Bucket):Promise<ResearchSource>{
+ if(bytes.length>MAX_R2_ORIGINAL_BYTES)throw new EvidenceInputError('Original exceeds 20 MiB limit',413);
+ if(!bucket)throw new EvidenceInputError('Private R2 original storage is not configured; maximum original size is 256 KiB',503);
+ const parsed=sourceSchema.parse(input),hash=await checksum(bytes);if(hash!==parsed.checksum)throw new EvidenceInputError('Source checksum does not match original');
+ const existing=await getSource(db,parsed.source_id);if(existing&&JSON.stringify(existing)!==JSON.stringify(parsed))throw new EvidenceInputError('Source ID is immutable');
+ // Require the additive metadata migration before writing any object.
+ await db.prepare('SELECT checksum FROM research_r2_objects LIMIT 1').first();
+ const key='research-originals/sha256/'+hash;
+ const stored=await bucket.put(key,bytes,{onlyIf:{etagDoesNotMatch:'*'},httpMetadata:{contentType:'application/octet-stream'},customMetadata:{sha256:hash}});
+ if(!stored)await checkedR2Bytes(bucket,key,hash,bytes.length);
+ if(existing)return parsed;
+ const at=new Date().toISOString();
+ // If D1 fails, the content-addressed private object is an orphan, never a public artifact.
+ await db.batch([db.prepare('INSERT OR IGNORE INTO research_r2_objects(checksum,object_key,byte_length,created_at) VALUES (?,?,?,?)').bind(hash,key,bytes.length,at),db.prepare('INSERT INTO research_r2_sources(source_id,checksum,metadata_json,created_by,created_at) VALUES (?,?,?,?,?)').bind(parsed.source_id,hash,JSON.stringify(parsed),actor,at)]);
+ return parsed;
+}
+export async function readOriginal(db:D1Database,sourceId:string,bucket?:R2Bucket):Promise<Uint8Array|null>{
+ const small=await db.prepare('SELECT o.original,o.checksum FROM research_source_objects o JOIN research_sources s ON s.checksum=o.checksum WHERE s.source_id=?').bind(sourceId).first<{original:number[];checksum:string}>();
+ if(small){const bytes=new Uint8Array(small.original);if(await checksum(bytes)!==small.checksum)throw new EvidenceInputError('Stored original checksum failed; retrieval blocked',503);return bytes;}
+ if(!await optionalR2Source(db,sourceId))return null;
+ if(!bucket)throw new EvidenceInputError('Private original storage is unavailable',503);
+ const row=await db.prepare('SELECT o.object_key,o.checksum,o.byte_length FROM research_r2_objects o JOIN research_r2_sources s ON s.checksum=o.checksum WHERE s.source_id=?').bind(sourceId).first<{object_key:string;checksum:string;byte_length:number}>();
+ if(!row)throw new EvidenceInputError('Original metadata missing',503);
+ return checkedR2Bytes(bucket,row.object_key,row.checksum,row.byte_length);
+}
 export function publicSourceProblems(source:ResearchSource,at=new Date().toISOString()):string[]{const problems:string[]=[];if(source.usage_rights!=='public')problems.push('Source rights are not public');if(source.rights_expiry&&Date.parse(source.rights_expiry)<=Date.parse(at))problems.push('Source rights expired');if(source.quality_status!=='verified_source')problems.push('Source quality unresolved');if(!source.retrieved_at)problems.push('Retrieval timestamp missing');return problems;}

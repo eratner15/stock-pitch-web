@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
-import { checksum, getSource, ingestSource, inspectBinaryOriginal, ingestWorkbookExtraction, MAX_ORIGINAL_BYTES, EvidenceInputError } from '../lib/research-sources';
+import { checksum, getSource, ingestSource, inspectBinaryOriginal, ingestWorkbookExtraction, MAX_ORIGINAL_BYTES, MAX_R2_ORIGINAL_BYTES, readOriginal, EvidenceInputError } from '../lib/research-sources';
 import { verifyFinancialFact } from '../lib/financial-facts';
 import { factSchema, validateResearchPackage } from '../lib/research-package';
 type Variables={user:{id:string;email:string}|null;role:string};
 /** Mounted beneath workspace's signed-session, membership and same-origin middleware. */
-export const evidence = new Hono<{Bindings:{DB:D1Database};Variables:Variables}>();
+export const evidence = new Hono<{Bindings:{DB:D1Database;EVIDENCE_ORIGINALS?:R2Bucket};Variables:Variables}>();
 evidence.use('*',async(c,next)=>{
  c.header('cache-control','private, no-store');c.header('x-content-type-options','nosniff');
  if(!c.get('user'))return c.json({error:'Research sign-in required'},401);
@@ -18,11 +18,13 @@ async function boundedBytes(request:Request,max:number):Promise<Uint8Array>{
  const bytes=new Uint8Array(size);let offset=0;for(const p of parts){bytes.set(p,offset);offset+=p.length;}return bytes;
 }
 async function body(request:Request):Promise<any>{return JSON.parse(new TextDecoder().decode(await boundedBytes(request,1048576)));}
+evidence.get('/evidence-capabilities',c=>c.json({small_original_storage:'private_d1',large_original_storage:c.env.EVIDENCE_ORIGINALS?'private_r2_binding_present':'not_configured',maximum_original_bytes:c.env.EVIDENCE_ORIGINALS?MAX_R2_ORIGINAL_BYTES:MAX_ORIGINAL_BYTES,large_storage_requires_migration:'012_research_r2_originals.sql',public_original_urls:false}));
 evidence.post('/evidence/file',async c=>{
  try{
   const contentType=c.req.header('content-type')??'';
   if(!/^multipart\/form-data\s*;/i.test(contentType))return c.json({error:'Use multipart/form-data with source metadata and a file'},415);
-  const bytes=await boundedBytes(c.req.raw,MAX_ORIGINAL_BYTES+40960);
+  const maximum=c.env.EVIDENCE_ORIGINALS?MAX_R2_ORIGINAL_BYTES:MAX_ORIGINAL_BYTES;
+  const bytes=await boundedBytes(c.req.raw,maximum+40960);
   const form=await new Response(bytes as BodyInit,{headers:{'content-type':contentType}}).formData();
   let unknownPart=false;form.forEach((_value,key)=>{if(!['file','source'].includes(key))unknownPart=true;});
   if(form.getAll('file').length!==1||form.getAll('source').length!==1||unknownPart)return c.json({error:'Exactly one file and one source metadata part are required'},400);
@@ -31,22 +33,22 @@ evidence.post('/evidence/file',async c=>{
   const input=JSON.parse(metadata);
   if(file.type!==input?.mime_type)return c.json({error:'File MIME and source metadata MIME must match'},415);
   const original=new Uint8Array(await file.arrayBuffer());
-  const inspection=inspectBinaryOriginal(original,file.type);
-  const source=await ingestSource(c.env.DB,input,original,c.get('user')!.id);
-  return c.json({source,original_bytes:original.length,storage:'private_d1',...inspection},201);
+  const inspection=inspectBinaryOriginal(original,file.type,maximum);
+  const source=await ingestSource(c.env.DB,input,original,c.get('user')!.id,c.env.EVIDENCE_ORIGINALS);
+  return c.json({source,original_bytes:original.length,storage:original.length>MAX_ORIGINAL_BYTES?'private_r2':'private_d1',...inspection},201);
  }catch(error){return error instanceof EvidenceInputError?c.json({error:error.message},error.status):c.json({error:'Invalid binary source metadata, checksum, container, or immutable source ID'},400);}
 });
 evidence.post('/evidence',async c=>{
  try{const b=await body(c.req.raw);if(typeof b.original_text!=='string')return c.json({error:'original_text is required; this endpoint accepts UTF-8 text originals only'},400);
  if(!['text/plain','text/html','text/csv','application/json','application/xml','text/xml'].includes(b.source?.mime_type))return c.json({error:'Binary originals require the private file adapter; text cannot stand in for a PDF or workbook'},400);
- const source=await ingestSource(c.env.DB,b.source,new TextEncoder().encode(b.original_text),c.get('user')!.id);return c.json({source},201);
+ const source=await ingestSource(c.env.DB,b.source,new TextEncoder().encode(b.original_text),c.get('user')!.id,c.env.EVIDENCE_ORIGINALS);return c.json({source},201);
  }catch{return c.json({error:'Invalid evidence, checksum mismatch, duplicate immutable ID, or source too large'},400);}
 });
 evidence.get('/evidence/:id',async c=>{const source=await getSource(c.env.DB,c.req.param('id'));return source?c.json({source}):c.json({error:'Evidence not found'},404);});
 evidence.post('/evidence/:id/workbook-cells',async c=>{
  try{
   const original=await getSource(c.env.DB,c.req.param('id'));if(!original)return c.json({error:'Original workbook not found'},404);
-  const result=await ingestWorkbookExtraction(c.env.DB,original,await body(c.req.raw),c.get('user')!.id);
+  const result=await ingestWorkbookExtraction(c.env.DB,original,await body(c.req.raw),c.get('user')!.id,c.env.EVIDENCE_ORIGINALS);
   return c.json(result,201);
  }catch(error){return error instanceof EvidenceInputError?c.json({error:error.message},error.status):c.json({error:'Invalid workbook extraction contract or immutable source ID'},400);}
 });
@@ -67,9 +69,10 @@ evidence.post('/packages',async c=>{
 evidence.get('/packages/:revision',async c=>{const row=await c.env.DB.prepare('SELECT snapshot_id,package_json FROM research_package_snapshots WHERE revision_id=? ORDER BY workspace_version DESC LIMIT 1').bind(c.req.param('revision')).first<{snapshot_id:string;package_json:string}>();return row?c.json({snapshotId:row.snapshot_id,package:JSON.parse(row.package_json)}):c.json({error:'Package not found'},404);});
 
 evidence.get('/evidence/:id/original',async c=>{
- const row=await c.env.DB.prepare('SELECT o.original FROM research_source_objects o JOIN research_sources s ON s.checksum=o.checksum WHERE s.source_id=?').bind(c.req.param('id')).first<{original:number[]}>();
- if(!row)return c.json({error:'Evidence not found'},404);
- return new Response(new Uint8Array(row.original),{headers:{'content-type':'application/octet-stream','content-disposition':'attachment; filename="source-original.bin"','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+ try{const original=await readOriginal(c.env.DB,c.req.param('id'),c.env.EVIDENCE_ORIGINALS);
+ if(!original)return c.json({error:'Evidence not found'},404);
+ return new Response(original as BodyInit,{headers:{'content-type':'application/octet-stream','content-disposition':'attachment; filename="source-original.bin"','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
+ }catch(error){return error instanceof EvidenceInputError?c.json({error:error.message},error.status):c.json({error:'Original retrieval failed'},503);}
 });
 evidence.post('/packages/:revision/verify',async c=>{
  try {const b=await body(c.req.raw);const claim=factSchema.parse(b.claim);const row=await c.env.DB.prepare('SELECT snapshot_id,package_json FROM research_package_snapshots WHERE revision_id=? ORDER BY workspace_version DESC LIMIT 1').bind(c.req.param('revision')).first<{snapshot_id:string;package_json:string}>();
