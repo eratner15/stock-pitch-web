@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "package_id": "package-fixture",
+  "company_id": "company-fixture",
+  "security_id": "security-fixture",
+  "revision_id": "revision-fixture",
+  "parent_revision_id": null,
+  "workspace_version": 1,
+  "body_checksum": "6722d65bbdc13c3d1f320b92d4c26ab62ff08304ddfbf779cb6df89f229065a8",
+  "created_at": "2026-01-01T00:00:00Z",
+  "analysis_as_of": "2026-01-01T00:00:00Z",
+  "owner": "author",
+  "reviewer": null,
+  "status": "draft",
+  "visibility": "internal",
+  "workflow": "idea_brief",
+  "template_version": "1.0",
+  "model_version": null,
+  "companies": [
+    {
+      "company_id": "company-fixture",
+      "name": "Synthetic Fixture Company",
+      "regulator_ids": [
+        {
+          "regulator": "synthetic",
+          "value": "test-only"
+        }
+      ]
+    }
+  ],
+  "securities": [
+    {
+      "security_id": "security-fixture",
+      "company_id": "company-fixture",
+      "exchange": "XNYS",
+      "share_class": "common",
+      "currency": "USD",
+      "reporting_currency": "USD",
+      "adr_ratio": null,
+      "aliases": [
+        {
+          "ticker": "FIXTURE",
+          "valid_from": null,
+          "valid_to": null
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "source-synthetic",
+      "source_type": "filing",
+      "issuer_or_provider": "Synthetic Fixture Company",
+      "document_title": "Synthetic annual revenue fixture",
+      "uri_or_file": "fixture://annual",
+      "locator": {
+        "kind": "table",
+        "value": "Revenue table"
+      },
+      "published_at": null,
+      "retrieved_at": "2026-01-01T00:00:00Z",
+      "reporting_period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025,
+        "kind": "year",
+        "label": "FY25"
+      },
+      "checksum": "05f709ebd802a685e10ae395549c3523cda7635f7c2363689b9313a6359b859d",
+      "usage_rights": "public",
+      "rights_scope": "Synthetic test data only",
+      "rights_expiry": null,
+      "quality_status": "verified_source",
+      "mime_type": "text/plain"
+    }
+  ],
+  "facts": [
+    {
+      "fact_id": "fact-revenue",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "revenue",
+      "kind": "reported_actual",
+      "raw_value": "1,200",
+      "value": 1200,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025,
+        "kind": "year",
+        "label": "FY25"
+      },
+      "segment": null,
+      "accounting_basis": "GAAP",
+      "source_id": "source-synthetic",
+      "locator": {
+        "kind": "table",
+        "value": "Revenue table"
+      },
+      "input_ids": [],
+      "rationale": null
+    }
+  ],
+  "assumptions": [],
+  "models": [],
+  "artifacts": [],
+  "judgment": {
+    "stance": "unrated",
+    "confidence": null,
+    "valuation_horizon": null,
+    "decision_summary": {
+      "text": null,
+      "fact_ids": []
+    },
+    "what_changed": {
+      "text": null,
+      "fact_ids": []
+    },
+    "bear_case": {
+      "text": null,
+      "fact_ids": []
+    },
+    "expectations": {
+      "text": null,
+      "fact_ids": []
+    },
+    "variant_view": {
+      "text": null,
+      "fact_ids": []
+    },
+    "thesis_pillars": [],
+    "catalysts": []
+  }
+}

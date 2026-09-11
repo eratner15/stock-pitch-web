@@ -1,3 +1,4 @@
+import { evidence } from './research-evidence';
 import { Hono } from "hono";
 import {
   safeSource,
@@ -81,6 +82,7 @@ workspace.onError((err, c) => {
     500,
   );
 });
+workspace.route("/api", evidence);
 workspace.get("/", (c) => c.html(renderWorkspace(c.get("role"))));
 workspace.get("/api/catalog", async (c) => {
   if (!c.env.RESEARCH_CATALOG)

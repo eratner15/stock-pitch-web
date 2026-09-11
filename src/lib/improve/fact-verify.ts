@@ -1,7 +1,8 @@
+export { verifyFinancialFact } from '../financial-facts';
 /**
  * Fact verifier — scans generated memo prose for numerical claims and
- * checks if each appears in the raw 10-K text. Any claim not found within
- * reasonable fuzzy match is flagged as [Unverified].
+ * flags unstructured claims as unverified. Raw numeric text matches are
+ * never proof of a financial fact; use verifyFinancialFact for typed evidence.
  *
  * Runs in the same request as generation, post-writePortalContent,
  * before the HTML is rendered. Annotates the content so templates can
@@ -90,28 +91,11 @@ export function expandNumericForms(numeric: string): string[] {
 }
 
 export function verifyClaims(claims: Claim[], filingText: string): VerificationResult {
-  const normFiling = filingText.toLowerCase().replace(/[,$\s]/g, '');
-  let verified = 0;
-  const unverified: Array<{ section: string; text: string; near: string }> = [];
-
-  for (const claim of claims) {
-    const forms = expandNumericForms(claim.numeric);
-    const found = forms.some(f => {
-      const norm = f.toLowerCase().replace(/[,$\s]/g, '');
-      if (norm.length < 2) return false;
-      return normFiling.includes(norm);
-    });
-    if (found) verified++;
-    else unverified.push({ section: claim.section, text: claim.numeric, near: claim.context });
-  }
-
-  return {
-    total_claims: claims.length,
-    verified,
-    unverified: unverified.length,
-    verification_rate: claims.length > 0 ? verified / claims.length : 1,
-    unverified_claims: unverified,
-  };
+  // A text hit lacks metric, period, scale, currency and accounting context.
+  // Keep it as a warning aid only; typed evidence is verified separately.
+  const unverified = claims.map(claim => ({section: claim.section, text: claim.numeric, near: claim.context}));
+  return {total_claims: claims.length, verified: 0, unverified: claims.length,
+    verification_rate: 0, unverified_claims: unverified};
 }
 
 /**
