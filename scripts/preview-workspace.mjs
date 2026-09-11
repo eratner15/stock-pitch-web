@@ -1,95 +1,34 @@
-// Local-only QA server: synthetic identities and data, never production bindings.
-// Not imported by the Worker. Listens only on loopback.
-import http from "node:http";
-import { readFileSync } from "node:fs";
-import { build } from "esbuild";
-import { Miniflare } from "miniflare";
-import { Hono } from "hono";
-async function bundle(entry) {
-  const r = await build({
-    entryPoints: [entry],
-    bundle: true,
-    write: false,
-    format: "esm",
-    platform: "node",
-  });
-  return import(
-    "data:text/javascript;base64," +
-      Buffer.from(r.outputFiles[0].text).toString("base64")
-  );
+// Actual Worker, loopback only; disposable D1 and synthetic generation/membership.
+import http from 'node:http';
+import {readFileSync} from 'node:fs';
+import {build} from 'esbuild';
+import {Miniflare} from 'miniflare';
+const port=Number(process.env.LOCAL_QA_PORT||8799);
+const secret='local-fixture-session-secret-never-production';
+const generated='SYNTHETIC QA OUTPUT. Not investment research. Revenue fixture is supplied for workflow testing. No house view is proposed.';
+const bundle=await build({entryPoints:['src/index.ts'],bundle:true,write:false,format:'esm',platform:'node',external:['cloudflare:workers','node:*'],loader:{'.md':'text'},plugins:[{name:'local-synthetic-generation',setup(b){b.onLoad({filter:/\/agents\/workflow-agent\.ts$/},()=>({contents:`import {DurableObject} from 'cloudflare:workers'; export class WorkflowAgent extends DurableObject { async fetch(){ return Response.json({analysis:${JSON.stringify(generated)}}); } }`,loader:'ts'}));}}]});
+const legacy={id:'legacy-synthetic',ticker:'LEGACY',title:'Synthetic legacy fixture',sector:null,summary:null,canonicalUrl:'https://research.levincap.com/spread/LEGACY',visibility:'public',publicationStatus:'published',publishedAt:'2026-01-01',updatedAt:null,companyId:null,securityId:null};
+const mf=new Miniflare({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-04-10',compatibilityFlags:['nodejs_compat'],bindings:{SESSION_SECRET:secret,ANTHROPIC_API_KEY:'synthetic-unused',RESEARCH_PUBLICATION_ENABLED:'true'},d1Databases:['DB'],kvNamespaces:['REQUESTS'],durableObjects:{WorkflowAgent:'WorkflowAgent'},serviceBindings:{RESEARCH_CATALOG:async()=>Response.json({documents:[],currentViews:[],scope:'Synthetic QA catalog'}),RESEARCH_LEGACY:async()=>Response.json({documents:[legacy],currentViews:[]})}});
+const db=await mf.getD1Database('DB');
+for(const file of ['005_research_desk.sql','006_research_workspace.sql','007_research_evidence.sql','008_reviewed_package.sql','009_research_tracker.sql']){
+ const sql=readFileSync('src/db/migrations/'+file,'utf8').replace(/--[^\n]*/g,'');
+ for(const statement of sql.split(/^(007|009)/.test(file)?'\n':';').filter(s=>s.trim()))await db.prepare(statement).run();
 }
-const { workspace } = await bundle("src/routes/research-workspace.ts");
-const catalogPath = process.env.LOCAL_CATALOG_SOURCE;
-if (!catalogPath)
-  throw Error(
-    "Set LOCAL_CATALOG_SOURCE to the isolated LCS src/pages/research-magazine.ts",
-  );
-const { getResearchCatalog } = await bundle(catalogPath);
-const mf = new Miniflare({
-  modules: true,
-  script: 'export default {fetch(){return new Response("fixture")}}',
-  compatibilityDate: "2026-04-10",
-  d1Databases: ["DB"],
+await db.prepare("INSERT INTO research_members(user_id,role) VALUES ('fixture-author','analyst'),('fixture-reviewer','reviewer')").run();
+const authBundle=await build({entryPoints:['src/lib/auth.ts'],bundle:true,write:false,format:'esm',platform:'node'});
+const auth=await import('data:text/javascript;base64,'+Buffer.from(authBundle.outputFiles[0].text).toString('base64'));
+const sessions={author:await auth.signSession('fixture-author','fixture-author@example.test',secret),reviewer:await auth.signSession('fixture-reviewer','fixture-reviewer@example.test',secret)};
+const server=http.createServer(async(req,res)=>{
+ try{
+  const url=new URL(req.url,'http://127.0.0.1:'+port);
+  if(url.pathname==='/__fixture/session'){
+   const role=url.searchParams.get('role');if(!['author','reviewer','anonymous'].includes(role)){res.writeHead(400);res.end('Invalid fixture role');return;}
+   res.writeHead(200,{'content-type':'application/json','cache-control':'no-store','set-cookie':'sp_session='+(sessions[role]??'')+'; Path=/; HttpOnly; SameSite=Lax'});res.end(JSON.stringify({role}));return;
+  }
+  const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=Buffer.concat(chunks);
+  const response=await mf.dispatchFetch(url.toString(),{method:req.method,headers:req.headers,...(body.length?{body}: {})});
+  res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));
+ }catch(error){console.error('Local preview request failed:',error.message);res.writeHead(500);res.end('Local preview error');}
 });
-const DB = await mf.getD1Database("DB");
-for (const file of ["005_research_desk.sql", "006_research_workspace.sql"])
-  for (const s of readFileSync("src/db/migrations/" + file, "utf8")
-    .replace(/--[^\n]*/g, "")
-    .split(";")
-    .filter((s) => s.trim()))
-    await DB.prepare(s).run();
-await DB.prepare(
-  "INSERT INTO research_members(user_id,role) VALUES ('fixture-author','analyst'),('fixture-reviewer','reviewer')",
-).run();
-const env = {
-  DB,
-  RESEARCH_CATALOG: { fetch: async () => Response.json(getResearchCatalog()) },
-  ANTHROPIC_API_KEY: "local-fixture-not-a-secret",
-  RESEARCH_PUBLICATION_ENABLED: "true",
-  WorkflowAgent: {
-    idFromName: (x) => x,
-    get: () => ({
-      fetch: async () =>
-        Response.json({
-          analysis:
-            "SYNTHETIC QA OUTPUT. Not investment research.\nSources: https://example.test/earnings\nNo house view is proposed.",
-        }),
-    }),
-  },
-};
-const app = new Hono();
-app.use("*", async (c, next) => {
-  const reviewer = c.req.header("cookie")?.includes("fixture-role=reviewer");
-  c.set("user", {
-    id: reviewer ? "fixture-reviewer" : "fixture-author",
-    email: "fixture@example.test",
-  });
-  await next();
-});
-app.route("/research/workspace", workspace);
-http
-  .createServer(async (req, res) => {
-    try {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      const body = Buffer.concat(chunks);
-      const response = await app.fetch(
-        new Request("http://127.0.0.1:8799" + req.url, {
-          method: req.method,
-          headers: req.headers,
-          ...(body.length ? { body, duplex: "half" } : {}),
-        }),
-        env,
-      );
-      res.writeHead(response.status, Object.fromEntries(response.headers));
-      res.end(await response.text());
-    } catch {
-      res.writeHead(500);
-      res.end("Local preview error");
-    }
-  })
-  .listen(8799, "127.0.0.1", () =>
-    console.log(
-      "LOCAL SYNTHETIC QA ONLY http://127.0.0.1:8799/research/workspace",
-    ),
-  );
+server.listen(port,'127.0.0.1',()=>console.log('LOCAL SYNTHETIC QA ONLY http://127.0.0.1:'+port+'/research/workspace'));
+async function stop(){server.close();await mf.dispose();process.exit(0)}process.on('SIGTERM',stop);process.on('SIGINT',stop);

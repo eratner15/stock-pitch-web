@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "worker": "actual bundled Worker",
+  "identity": "signed synthetic sessions",
+  "sourceAndPackage": "actual authenticated endpoints",
+  "generation": "synthetic Durable Object only",
+  "trackerCSV": true,
+  "stalePackageCleared": true,
+  "unsavedEditRejected": true,
+  "independentApproval": true,
+  "publicThenWithdrawn": true,
+  "desktopWidth": 1280,
+  "mobileWidth": 390,
+  "browserErrors": []
+}

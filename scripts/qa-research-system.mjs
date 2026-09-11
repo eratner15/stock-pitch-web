@@ -1,0 +1,55 @@
+// Run against scripts/preview-workspace.mjs only: no production host accepted.
+import assert from 'node:assert/strict';
+import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {createHash,randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);const {chromium}=require('/home/eratner/gstack/node_modules/playwright');
+const origin=process.env.LOCAL_QA_ORIGIN||'http://127.0.0.1:8809';
+if(new URL(origin).hostname!=='127.0.0.1'||new URL(origin).protocol!=='http:')throw Error('Loopback synthetic preview required');
+const out=process.env.LOCAL_QA_OUTPUT||'/tmp/lcs-system-browser-qa';mkdirSync(out,{recursive:true});
+const browser=await chromium.launch({headless:true});
+try{
+ const context=await browser.newContext({viewport:{width:1280,height:900}}),page=await context.newPage(),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ const endpoint='/research/workspace';
+ const api=async(path,body)=>{const r=await context.request.fetch(origin+endpoint+path,{method:body?'POST':'GET',headers:body?{origin,'content-type':'application/json'}:{},...(body?{data:body}:{})});const text=await r.text();assert.ok(r.ok(),path+' '+r.status()+' '+text);return JSON.parse(text);};
+ await context.request.get(origin+'/__fixture/session?role=author');await page.goto(origin+endpoint);
+ await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('Catalog loaded'));
+ assert.ok((await page.locator('#documents').textContent()).includes('Synthetic legacy fixture'));
+ await page.locator('#create-draft [name=ticker]').fill('FIXTURE');await page.locator('#create-draft [name=title]').fill('Synthetic browser research QA');
+ await page.locator('#create-draft [name=sources]').fill('https://example.test/earnings');await page.locator('#create-draft [name=sourceText]').fill('Synthetic filing fixture revenue USD 1,200 million. No real company or investment recommendation.');
+ const created=page.waitForResponse(r=>r.url().endsWith('/api/revisions')&&r.request().method()==='POST');await page.locator('#create-draft button').click();const saved=await(await created).json();assert.ok(saved.id);
+ const id=saved.id;
+ await page.locator('#editor').waitFor({state:'visible'});
+ async function action(name,status){const response=page.waitForResponse(r=>r.url().endsWith('/'+id+'/'+name)&&r.request().method()==='POST');await page.locator('[data-action='+name+']').click();const r=await response;assert.equal(r.status(),200,await r.text());await page.waitForFunction(s=>document.querySelector('#revision-meta').textContent.startsWith(s+' ·'),status);}
+ await action('generate','draft');
+ let row=(await api('/api/revisions/'+id)).revision;assert.match(row.body,/SYNTHETIC QA OUTPUT/);
+ const p=JSON.parse(readFileSync('tests/fixtures/research-package.json','utf8'));
+ p.package_id='browser-'+randomUUID();p.revision_id=id;p.company_id=row.company_id;p.companies[0].company_id=row.company_id;p.securities[0].company_id=row.company_id;p.facts[0].company_id=row.company_id;
+ p.owner='fixture-author';p.workspace_version=row.version;p.body_checksum=createHash('sha256').update(row.body).digest('hex');
+ p.judgment={...p.judgment,portfolio_action:'not_assessed',limitations:'Synthetic workflow QA only.',differentiated:false,consensus_unavailable_reason:'No consensus snapshot supplied.',decision_summary:{text:'Unrated pending further evidence.',fact_ids:['fact-revenue']},bear_case:{text:'Revenue durability is unproven.',fact_ids:['fact-revenue']},expectations:{text:'Market expectations remain unresolved.',fact_ids:['fact-revenue']},variant_view:{text:'Differentiation is not established.',fact_ids:['fact-revenue']},thesis_pillars:[{id:'demand',claim:{text:'Test revenue durability.',fact_ids:['fact-revenue']},counter_evidence:{text:'One period is insufficient.',fact_ids:['fact-revenue']},falsifier:'Two revenue declines.'}],dated_tests:[{id:'demand-test',metric:'Revenue',fact_ids:['fact-revenue'],owner:'fixture-author',next_check:'2026-12-01',falsifier:'Two revenue declines.'}]};
+ const original='Synthetic filing fixture revenue USD 1,200 million.';p.sources[0].source_id='source-'+randomUUID();p.facts[0].source_id=p.sources[0].source_id;p.sources[0].checksum=createHash('sha256').update(original).digest('hex');
+ const stored=await api('/api/evidence',{source:p.sources[0],original_text:original});p.sources[0]=stored.source;
+ await api('/api/packages',p);
+ const selected=await api('/api/packages/'+id);assert.ok(selected.snapshotId);
+ await page.locator('#refresh').click();await page.locator('[data-revision="'+id+'"]').click();
+ await page.waitForFunction(pkg=>document.querySelector('#package-preview').textContent.includes(pkg),p.package_id);
+ await page.getByText('Evidence package for review',{exact:true}).click();assert.match(await page.locator('#package-preview').textContent(),/fact-revenue/);
+ await page.locator('#track-package').click();await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('snapshots preserved'));
+ assert.match(await page.locator('#tracker-view').textContent(),/revenue/i);
+ const csv=await context.request.get(origin+await page.locator('#tracker-download').getAttribute('href'));assert.equal(csv.status(),200);assert.match(await csv.text(),/Tracker ID/);assert.equal(csv.headers()['cache-control'],'private, no-store');
+ await page.locator('#body').fill(row.body+' UNSAVED');const rejected=page.waitForResponse(r=>r.url().endsWith('/'+id+'/submit'));await page.locator('[data-action=submit]').click();assert.equal((await rejected).status(),409);await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('Save or discard'));
+ await page.locator('#body').fill(row.body);await action('submit','review');
+ await context.request.get(origin+'/__fixture/session?role=reviewer');await page.reload();await page.locator('[data-revision="'+id+'"]').click();await page.locator('#editor').waitFor({state:'visible'});await action('approve','approved');
+ await page.locator('#confirm-public').check();await action('publish','published');
+ const anonymous=await browser.newContext();const publicResponse=await anonymous.request.get(origin+'/research/published/'+id);assert.equal(publicResponse.status(),200);assert.match(await publicResponse.text(),/SYNTHETIC QA OUTPUT/);assert.match(publicResponse.headers()['cache-control'],/no-store/);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=1280),'desktop overflow');await page.screenshot({path:out+'/workspace-desktop.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=390),'mobile overflow');await page.screenshot({path:out+'/workspace-mobile.png',fullPage:true});
+ await action('withdraw','withdrawn');assert.equal((await anonymous.request.get(origin+'/research/published/'+id)).status(),404);
+ const empty=await api('/api/revisions',{ticker:'EMPTY',title:'Synthetic empty draft',sourceText:'Synthetic source only',sources:['https://example.test/empty'],idempotencyKey:randomUUID()});
+ await page.locator('#refresh').click();await page.locator('[data-revision="'+empty.id+'"]').click();
+ await page.waitForFunction(()=>document.querySelector('#package-preview').textContent.includes('No evidence package'));
+ assert.equal((await page.locator('#tracker-view').textContent()).trim(),'');assert.equal(await page.locator('#tracker-download').isHidden(),true);
+ assert.deepEqual(errors,[]);await anonymous.close();
+ const report={status:'passed',worker:'actual bundled Worker',identity:'signed synthetic sessions',sourceAndPackage:'actual authenticated endpoints',generation:'synthetic Durable Object only',trackerCSV:true,stalePackageCleared:true,unsavedEditRejected:true,independentApproval:true,publicThenWithdrawn:true,desktopWidth:1280,mobileWidth:390,browserErrors:errors};writeFileSync(out+'/report.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+}finally{await browser.close();}
