@@ -1,3 +1,5 @@
+import { federateCatalog } from '../lib/catalog-federation';
+import { packageForReview } from '../lib/research-review';
 import { evidence } from './research-evidence';
 import { Hono } from "hono";
 import {
@@ -10,6 +12,7 @@ type Env = {
   DB: D1Database;
   WorkflowAgent: DurableObjectNamespace;
   RESEARCH_CATALOG?: Fetcher;
+  RESEARCH_LEGACY?: Fetcher;
   ANTHROPIC_API_KEY?: string;
   RESEARCH_PUBLICATION_ENABLED?: string;
 };
@@ -85,24 +88,10 @@ workspace.onError((err, c) => {
 workspace.route("/api", evidence);
 workspace.get("/", (c) => c.html(renderWorkspace(c.get("role"))));
 workspace.get("/api/catalog", async (c) => {
-  if (!c.env.RESEARCH_CATALOG)
-    return c.json(
-      {
-        error:
-          "Catalog service binding is not configured. No fallback catalog has been invented.",
-      },
-      503,
-    );
-  const res = await c.env.RESEARCH_CATALOG.fetch(
-    "https://research.levincap.com/research-catalog",
-  );
-  if (!res.ok) return c.json({ error: "Catalog unavailable" }, 502);
-  const catalog = (await res.json()) as any;
-  // Workspace aliases also run on bare/www levincap hosts. Editorial links
-  // must still resolve on the research hostname, not the firm's homepage.
-  for (const entry of [...catalog.documents, ...catalog.currentViews]) {
-    entry.canonicalUrl = new URL(entry.canonicalUrl, 'https://research.levincap.com').href;
-  }
+  const catalog = await federateCatalog([
+    {owner:'signal',fetch:()=>c.env.RESEARCH_CATALOG ? c.env.RESEARCH_CATALOG.fetch('https://research.levincap.com/research-catalog') : Promise.reject(new Error('Binding unavailable'))},
+    {owner:'legacy',fetch:()=>c.env.RESEARCH_LEGACY ? c.env.RESEARCH_LEGACY.fetch('https://research.levincap.com/api/research/catalog') : Promise.reject(new Error('Binding unavailable'))},
+  ]);
   const { results } = await c.env.DB.prepare(
     "SELECT id,document_id,company_id,ticker,title,body,published_at,revised_at,reviewed_at FROM research_revisions WHERE status='published' AND visibility='public' ORDER BY published_at DESC",
   ).all<any>();
@@ -419,7 +408,7 @@ workspace.post("/api/revisions/:id/:action", async (c) => {
     )
       return c.json({ error: "Draft edit not allowed" }, 400);
     const result = await c.env.DB.prepare(
-      "UPDATE research_revisions SET body=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,revised_at=?,version=version+1 WHERE id=? AND version=?",
+      "UPDATE research_revisions SET body=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,reviewed_snapshot_id=NULL,revised_at=?,version=version+1 WHERE id=? AND version=?",
     )
       .bind(b.body, timestamp, revisionId, b.version)
       .run();
@@ -454,13 +443,24 @@ workspace.post("/api/revisions/:id/:action", async (c) => {
       },
       403,
     );
+  if (['submit','approve','publish'].includes(action) && b.body !== undefined && b.body !== row.body) return c.json({error:'Save or discard visible body edits before reviewing the stored revision'},409);
+  let packageSnapshot: string | null = null;
+  if (['submit', 'approve', 'publish'].includes(action)) {
+    try {
+      const selected = await packageForReview(c.env.DB, revisionId, row.body, b.packageSnapshotId, action === 'publish');
+      packageSnapshot = selected.snapshotId;
+      if (action === 'publish' && row.reviewed_snapshot_id !== packageSnapshot) return c.json({error:'Publication must use the independently approved evidence snapshot'},409);
+    } catch (error) { return c.json({error:error instanceof Error ? error.message : 'Package review failed'},409); }
+  }
   // Batch is atomic; audit INSERT selects the exact resulting version, preventing phantom events.
   const result = await c.env.DB.batch([
     c.env.DB.prepare(
-      `UPDATE research_revisions SET status=?,visibility=?,version=version+1,reviewed_by=CASE WHEN ?='approve' THEN ? ELSE reviewed_by END,reviewed_at=CASE WHEN ?='approve' THEN ? ELSE reviewed_at END,published_at=CASE WHEN ?='publish' THEN ? ELSE published_at END WHERE id=? AND version=? AND status=?`,
+      `UPDATE research_revisions SET status=?,visibility=?,version=version+1,reviewed_snapshot_id=CASE WHEN ?='approve' THEN ? ELSE reviewed_snapshot_id END,reviewed_by=CASE WHEN ?='approve' THEN ? ELSE reviewed_by END,reviewed_at=CASE WHEN ?='approve' THEN ? ELSE reviewed_at END,published_at=CASE WHEN ?='publish' THEN ? ELSE published_at END WHERE id=? AND version=? AND status=?`,
     ).bind(
       transition[1],
       action === "publish" ? "public" : "private",
+      action,
+      packageSnapshot,
       action,
       actor,
       action,

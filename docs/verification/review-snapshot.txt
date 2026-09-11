@@ -1,0 +1,160 @@
+
+> stock-pitch-web@0.1.0 verify
+> npm run type-check && npm test && wrangler deploy --dry-run
+
+
+> stock-pitch-web@0.1.0 type-check
+> tsc --noEmit
+
+
+> stock-pitch-web@0.1.0 test
+> node --test tests/*.test.mjs
+
+TAP version 13
+# Subtest: partial registries preserve identity and exclude private or hostile links
+ok 1 - partial registries preserve identity and exclude private or hostile links
+  ---
+  duration_ms: 45.678346
+  type: 'test'
+  ...
+# [portal] generation failed Error: Publication blocked: rating unresolved
+#     at assertPortalProvenance (script-0:21100:58)
+#     at generatePortal (script-0:55591:5)
+#     at async script-0:55208:5
+#     at async dispatch (script-0:21130:17)
+#     at async script-0:54313:3
+#     at async dispatch (script-0:21130:17)
+#     at async script-0:22455:26
+#     at async Object.mountedFetch [as fetch] (script-0:55675:16)
+# [portal] inline generation failed Error: Publication blocked: rating unresolved
+#     at assertPortalProvenance (script-0:21100:58)
+#     at generatePortal (script-0:55591:5)
+#     at async script-0:55208:5
+#     at async dispatch (script-0:21130:17)
+#     at async script-0:54313:3
+#     at async dispatch (script-0:21130:17)
+#     at async script-0:22455:26
+#     at async Object.mountedFetch [as fetch] (script-0:55675:16)
+# Subtest: actual generation route rejects provenance failure without publishing pages or catalog row
+ok 2 - actual generation route rejects provenance failure without publishing pages or catalog row
+  ---
+  duration_ms: 2629.384751
+  type: 'test'
+  ...
+# Subtest: package identity, aliases, currency, periods and revision references are validated
+ok 3 - package identity, aliases, currency, periods and revision references are validated
+  ---
+  duration_ms: 1921.125119
+  type: 'test'
+  ...
+# Subtest: typed verification rejects coincidental numbers and normalizes scales and signs
+ok 4 - typed verification rejects coincidental numbers and normalizes scales and signs
+  ---
+  duration_ms: 8.13122
+  type: 'test'
+  ...
+# Subtest: immutable evidence preserves duplicate content, timestamps and rights explicitly
+ok 5 - immutable evidence preserves duplicate content, timestamps and rights explicitly
+  ---
+  duration_ms: 327.708562
+  type: 'test'
+  ...
+# Subtest: workspace package ingestion binds exact author, revision and immutable sources
+ok 6 - workspace package ingestion binds exact author, revision and immutable sources
+  ---
+  duration_ms: 450.847443
+  type: 'test'
+  ...
+# Subtest: absent, empty and malformed metadata remains unresolved; zero survives
+ok 7 - absent, empty and malformed metadata remains unresolved; zero survives
+  ---
+  duration_ms: 21.839923
+  type: 'test'
+  ...
+# Subtest: publication rejects unresolved metadata and unavailable cited filings
+ok 8 - publication rejects unresolved metadata and unavailable cited filings
+  ---
+  duration_ms: 1.568857
+  type: 'test'
+  ...
+# Subtest: failed and malformed price lookups remain null, including strict demo option
+ok 9 - failed and malformed price lookups remain null, including strict demo option
+  ---
+  duration_ms: 61.243891
+  type: 'test'
+  ...
+# Subtest: real Worker dispatch validates signed session, membership and alternate hosts
+ok 10 - real Worker dispatch validates signed session, membership and alternate hosts
+  ---
+  duration_ms: 2450.218578
+  type: 'test'
+  ...
+# Subtest: public revision lookup excludes draft/private; withdrawal is immediate
+ok 11 - public revision lookup excludes draft/private; withdrawal is immediate
+  ---
+  duration_ms: 118.006718
+  type: 'test'
+  ...
+# Subtest: team access, alternate host-independent guard and no-store
+ok 12 - team access, alternate host-independent guard and no-store
+  ---
+  duration_ms: 1757.618465
+  type: 'test'
+  ...
+# Subtest: ETF dates, types, weights and source URLs are validated
+ok 13 - ETF dates, types, weights and source URLs are validated
+  ---
+  duration_ms: 2.314297
+  type: 'test'
+  ...
+# Subtest: snapshot imports are durable and idempotent
+ok 14 - snapshot imports are durable and idempotent
+  ---
+  duration_ms: 171.210338
+  type: 'test'
+  ...
+# {"event":"research_publication_transition","action":"submit","revisionId":"3db81878-db00-4128-b912-e1120e569b24","changed":1}
+# {"event":"research_publication_transition","action":"approve","revisionId":"3db81878-db00-4128-b912-e1120e569b24","changed":1}
+# {"event":"research_publication_transition","action":"submit","revisionId":"3db81878-db00-4128-b912-e1120e569b24","changed":1}
+# {"event":"research_publication_transition","action":"approve","revisionId":"3db81878-db00-4128-b912-e1120e569b24","changed":1}
+# {"event":"research_publication_transition","action":"publish","revisionId":"3db81878-db00-4128-b912-e1120e569b24","changed":1}
+# {"event":"research_publication_transition","action":"withdraw","revisionId":"3db81878-db00-4128-b912-e1120e569b24","changed":1}
+# Subtest: draft → independent review → gated publication; edits invalidate approval; withdrawals remove catalog entry
+ok 15 - draft → independent review → gated publication; edits invalidate approval; withdrawals remove catalog entry
+  ---
+  duration_ms: 1462.619761
+  type: 'test'
+  ...
+# Subtest: generation failure is visible and retries reuse the revision
+ok 16 - generation failure is visible and retries reuse the revision
+  ---
+  duration_ms: 411.980244
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4754.601497
+
+ ⛅️ wrangler 4.82.2 (update available 4.131.0)
+──────────────────────────────────────────────
+Total Upload: 2143.79 KiB / gzip: 418.94 KiB
+Your Worker has access to the following bindings:
+Binding                                                                  Resource                  
+env.ResearchAgent (ResearchAgent)                                        Durable Object            
+env.WorkflowAgent (WorkflowAgent)                                        Durable Object            
+env.REQUESTS (3b589a51483143e399b7f69ccaf2d6f0)                          KV Namespace              
+env.DB (stock-pitch-db)                                                  D1 Database               
+env.RESEARCH_CATALOG (lcs-portfolio-intel)                               Worker                    
+env.RESEARCH_LEGACY (levincap-research)                                  Worker                    
+env.BROWSER                                                              Browser                   
+env.AI                                                                   AI                        
+env.ENVIRONMENT ("production")                                           Environment Variable      
+env.RESEARCH_PUBLICATION_ENABLED ("false")                               Environment Variable      
+
+--dry-run: exiting now.

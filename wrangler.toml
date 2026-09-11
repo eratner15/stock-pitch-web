@@ -41,6 +41,10 @@ RESEARCH_PUBLICATION_ENABLED = "false"
 binding = "RESEARCH_CATALOG"
 service = "lcs-portfolio-intel"
 
+[[services]]
+binding = "RESEARCH_LEGACY"
+service = "levincap-research"
+
 [[kv_namespaces]]
 binding = "REQUESTS"
 id = "3b589a51483143e399b7f69ccaf2d6f0"

@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -30,12 +31,12 @@ before(async () => {
     ],
   });
   db = await mf.getD1Database("DB");
-  for (const file of ["005_research_desk.sql", "006_research_workspace.sql"]) {
+  for (const file of ["005_research_desk.sql", "006_research_workspace.sql", "007_research_evidence.sql", "008_reviewed_package.sql"]) {
     const sql = readFileSync("src/db/migrations/" + file, "utf8").replace(
       /--[^\n]*/g,
       "",
     );
-    for (const statement of sql.split(";").filter((s) => s.trim()))
+    for (const statement of sql.split(file.startsWith("007")?"\n":";").filter((s) => s.trim()))
       await db.prepare(statement).run();
   }
   await db
@@ -64,6 +65,7 @@ const env = () => ({
       Response.json({ documents: [], currentViews: [], scope: "test fixture" }),
   },
 });
+const selectedPackages=new Map();
 function req(path, body, user = "author", extra = {}) {
   return app.request(
     "https://test.local/research/workspace" + path,
@@ -75,10 +77,19 @@ function req(path, body, user = "author", extra = {}) {
         "content-type": "application/json",
         ...extra.headers,
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      ...(body ? { body: JSON.stringify({...body,packageSnapshotId:body.packageSnapshotId??selectedPackages.get(path.split('/')[3])}) } : {}),
     },
     { ...env(), ...extra.env },
   );
+}
+async function attachPackage(revisionId) {
+ const row=await db.prepare('SELECT * FROM research_revisions WHERE id=?').bind(revisionId).first();
+ const p=JSON.parse(readFileSync('tests/fixtures/research-package.json','utf8'));
+ p.revision_id=revisionId;p.company_id=row.company_id;p.companies[0].company_id=row.company_id;p.securities[0].company_id=row.company_id;p.facts[0].company_id=row.company_id;
+ p.owner=row.created_by;p.workspace_version=row.version;p.body_checksum=createHash('sha256').update(row.body).digest('hex');
+ const snapshotId=randomUUID();
+ await db.prepare('INSERT INTO research_package_snapshots(snapshot_id,package_id,revision_id,workspace_version,body_checksum,package_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(snapshotId,p.package_id,revisionId,row.version,p.body_checksum,JSON.stringify(p),p.owner,p.created_at).run();
+ selectedPackages.set(revisionId,snapshotId);return snapshotId;
 }
 const snapshot = {
   etf: "TEST",
@@ -173,6 +184,9 @@ test("draft → independent review → gated publication; edits invalidate appro
     ).status,
     409,
   );
+  assert.equal((await req('/api/revisions/'+id+'/submit',{version:2})).status,409);
+  await attachPackage(id);
+  assert.equal((await req('/api/revisions/'+id+'/submit',{version:2,body:'Unsaved text'})).status,409);
   assert.equal(
     (await req("/api/revisions/" + id + "/submit", { version: 2 })).status,
     200,
@@ -208,6 +222,8 @@ test("draft → independent review → gated publication; edits invalidate appro
   let row = (await (await req("/api/revisions/" + id)).json()).revision;
   assert.equal(row.reviewed_at, null);
   assert.equal(row.status, "draft");
+  assert.equal((await req('/api/revisions/'+id+'/submit',{version:5})).status,409);
+  await attachPackage(id);
   await req("/api/revisions/" + id + "/submit", { version: 5 });
   await req("/api/revisions/" + id + "/approve", { version: 6 }, "reviewer");
   const published = await req(

@@ -30,7 +30,7 @@ evidence.post('/packages',async c=>{
   return c.json({ok:!!result.meta.changes},result.meta.changes?201:409);
  }catch{return c.json({error:'Invalid package contract, immutable snapshot already exists, or missing migration'},400);}
 });
-evidence.get('/packages/:revision',async c=>{const row=await c.env.DB.prepare('SELECT package_json FROM research_package_snapshots WHERE revision_id=? ORDER BY workspace_version DESC LIMIT 1').bind(c.req.param('revision')).first<{package_json:string}>();return row?c.json({package:JSON.parse(row.package_json)}):c.json({error:'Package not found'},404);});
+evidence.get('/packages/:revision',async c=>{const row=await c.env.DB.prepare('SELECT snapshot_id,package_json FROM research_package_snapshots WHERE revision_id=? ORDER BY workspace_version DESC LIMIT 1').bind(c.req.param('revision')).first<{snapshot_id:string;package_json:string}>();return row?c.json({snapshotId:row.snapshot_id,package:JSON.parse(row.package_json)}):c.json({error:'Package not found'},404);});
 
 evidence.get('/evidence/:id/original',async c=>{
  const row=await c.env.DB.prepare('SELECT o.original FROM research_source_objects o JOIN research_sources s ON s.checksum=o.checksum WHERE s.source_id=?').bind(c.req.param('id')).first<{original:number[]}>();
@@ -38,7 +38,7 @@ evidence.get('/evidence/:id/original',async c=>{
  return new Response(new Uint8Array(row.original),{headers:{'content-type':'application/octet-stream','content-disposition':'attachment; filename="source-original.bin"','cache-control':'private, no-store','x-content-type-options':'nosniff'}});
 });
 evidence.post('/packages/:revision/verify',async c=>{
- try {const b=await body(c.req.raw);const claim=factSchema.parse(b.claim);const row=await c.env.DB.prepare('SELECT package_json FROM research_package_snapshots WHERE revision_id=? ORDER BY workspace_version DESC LIMIT 1').bind(c.req.param('revision')).first<{package_json:string}>();
+ try {const b=await body(c.req.raw);const claim=factSchema.parse(b.claim);const row=await c.env.DB.prepare('SELECT snapshot_id,package_json FROM research_package_snapshots WHERE revision_id=? ORDER BY workspace_version DESC LIMIT 1').bind(c.req.param('revision')).first<{snapshot_id:string;package_json:string}>();
  if(!row)return c.json({error:'Evidence package not found'},404);
  const p=validateResearchPackage(JSON.parse(row.package_json)),fact=p.facts.find(f=>f.fact_id===b.evidence_fact_id);if(!fact)return c.json({error:'Evidence fact not found'},404);
  return c.json({...verifyFinancialFact(claim,fact,fact.source_id?await getSource(c.env.DB,fact.source_id):null),evidence_revision:p.revision_id,evidence_workspace_version:p.workspace_version,verification_scope:'Typed comparison to analyst-supplied immutable evidence; original extraction requires review'});

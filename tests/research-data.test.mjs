@@ -56,3 +56,9 @@ test('workspace package ingestion binds exact author, revision and immutable sou
  const edited=copy();edited.workspace_version=2;assert.equal((await request('/packages',edited)).status,409);
  assert.equal((await request('/packages/'+p.revision_id,undefined,null)).status,401);
 });
+
+test('rights expiry uses instants across timezone offsets',()=>{
+ const p=JSON.parse(readFileSync('tests/fixtures/research-package.json','utf8'));
+ const source={...p.sources[0],rights_expiry:'2026-01-01T13:00:00+02:00'};
+ assert.ok(sources.publicSourceProblems(source,'2026-01-01T12:00:00Z').includes('Source rights expired'));
+});
