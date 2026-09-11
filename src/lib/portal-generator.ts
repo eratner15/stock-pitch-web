@@ -18,6 +18,7 @@
  */
 
 import { normalizeRating, normalizeMetric } from './research-provenance';
+import { RESEARCH_RUBRIC_PROMPT } from './research-rubric';
 import skillMarkdown from '../skills/stock-pitch/SKILL.md';
 
 import { fetchPrice, fetchPriceHistory, type PriceQuote } from './prices';
@@ -245,7 +246,9 @@ async function runModelOnce(
  * Shared voice prompt — enforced on every call so the whole portal reads
  * like one analyst wrote it.
  */
-const VOICE_SYSTEM = `You are a senior sell-side equity research analyst covering this name for a decade at Levin Capital Strategies. Voice: direct, specific, analytical. Zero hype. Zero exclamation points. Write with conviction backed by specific data.
+const VOICE_SYSTEM = `${RESEARCH_RUBRIC_PROMPT}
+
+Write an evidence-backed equity research draft for Levin Capital Strategies. Voice: direct, specific, analytical. Zero hype. Zero exclamation points. Write with conviction backed by specific data.
 
 EVERY financial figure MUST carry a bracketed source tag:
   [10-K] — SEC annual filing     [10-Q] — quarterly filing
@@ -261,8 +264,8 @@ FORMATTING RULES (critical for readability):
 - After stating a key number, add context: vs prior year, vs consensus, vs peers.
 
 DATA RULES:
-- At least 8 specific data points per 300 words.
-- Name names: CEOs, CFOs, products, competitors, analysts, banks.
+- Include only the specific data points supported by the supplied source material; reduce length when evidence is sparse.
+- Name executives, products, competitors and banks only when source-backed. Individual analyst names and targets require the verified report observations defined above.
 - Concrete nouns: "Trainium chips" not "AI accelerators". "Jensen Huang" not "the CEO".
 - "Not disclosed" if unknown — NEVER invent.
 - 2-3 sidenotes per section: [[SIDENOTE: non-obvious fact worth spotlighting]].
@@ -432,7 +435,7 @@ ${researchCard}`;
       const client = new Anthropic({ apiKey: env?.ANTHROPIC_API_KEY || '' });
       const resp = await client.messages.create({
         model: 'claude-sonnet-4-20250514', max_tokens: 1500,
-        system: 'Return ONE JSON object, no markdown fence. Every financial number must include a source tag like [10-K].',
+        system: `${RESEARCH_RUBRIC_PROMPT}\nReturn ONE JSON object, no markdown fence. Tag only the actual supplied source; missing financial values are null.`,
         messages: [{ role: 'user', content: `Produce FINANCIALS JSON for ${r.ticker} (${r.company}). Current price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"historical":[{"year":"FY23","revenue":"$X.XB","operatingIncome":"$X.XB","eps":"$X.XX"}],"projected":[{"year":"FY26E","revenue":"$X.XB","ebitdaMargin":"X%","eps":"$X.XX"}],"keyMetrics":[{"label":"Metric","value":"X","source":"[10-K]"}],"dcfNarrative":"80 words"}\n\n3 historical rows, 3 projected, 4-6 keyMetrics.\n\n10-K excerpt:\n${r.mda_excerpt.slice(0, 8000)}` }],
       });
       const text = resp.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('');
@@ -446,7 +449,7 @@ ${researchCard}`;
       const client = new Anthropic({ apiKey: env?.ANTHROPIC_API_KEY || '' });
       const resp = await client.messages.create({
         model: 'claude-sonnet-4-20250514', max_tokens: 1200,
-        system: 'Return ONE JSON object, no markdown fence.',
+        system: `${RESEARCH_RUBRIC_PROMPT}\nReturn ONE JSON object, no markdown fence. Missing consensus and targets are null.`,
         messages: [{ role: 'user', content: `Produce CONSENSUS JSON for ${r.ticker} (${r.company}). Current price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"streetView":"60 words with [Consensus] tags","peerTickers":["TICKER1"],"peerNote":"80 words","ourPt":"$XXX — Y% upside","ptMethodology":"80 words"}\n\n4-6 peer tickers.\n\n10-K excerpt:\n${r.mda_excerpt.slice(0, 5000)}` }],
       });
       const text = resp.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('');
@@ -465,7 +468,7 @@ ${researchCard}`;
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       const resp = await client.messages.create({
         model: 'claude-sonnet-4-20250514', max_tokens: 1500,
-        system: 'Return ONE JSON object. No markdown fence. Every number with [10-K] tag.',
+        system: `${RESEARCH_RUBRIC_PROMPT}\nReturn ONE JSON object. No markdown fence. Tag only actual supplied sources; missing values are null.`,
         messages: [{ role: 'user', content: `Produce FINANCIALS JSON for ${r.ticker} (${r.company}). Price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"historical":[{"year":"FY23","revenue":"$X.XB","operatingIncome":"$X.XB","eps":"$X.XX"}],"projected":[{"year":"FY26E","revenue":"$X.XB","ebitdaMargin":"X%","eps":"$X.XX"}],"keyMetrics":[{"label":"Metric","value":"X","source":"[10-K]"}],"dcfNarrative":"80 words"}\n\n3 historical, 3 projected, 4-6 keyMetrics.\n\n10-K:\n${r.mda_excerpt.slice(0, 8000)}` }],
       });
       const text = resp.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
@@ -481,7 +484,7 @@ ${researchCard}`;
       const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
       const resp = await client.messages.create({
         model: 'claude-sonnet-4-20250514', max_tokens: 1200,
-        system: 'Return ONE JSON object. No markdown fence.',
+        system: `${RESEARCH_RUBRIC_PROMPT}\nReturn ONE JSON object. No markdown fence. Missing consensus and targets are null.`,
         messages: [{ role: 'user', content: `Produce CONSENSUS JSON for ${r.ticker} (${r.company}). Price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"streetView":"60 words [Consensus]","peerTickers":["T1","T2"],"peerNote":"80 words","ourPt":"$XXX — Y% upside","ptMethodology":"80 words"}\n\n4-6 peers.\n\n10-K:\n${r.mda_excerpt.slice(0, 5000)}` }],
       });
       const text = resp.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
@@ -512,10 +515,10 @@ PEERS: ${(consensusParsed.peerTickers || []).join(', ')}
 
 OUTPUT: 500-600 words. No heading. Structure with 4 bold sub-sections:
   **The Setup** — what the business does, current price, market cap (2-3 sentences)
-  **The Mispricing** — what consensus misses, our variant view (2-3 sentences with specific numbers)
+  **Expectations and Difference** — sourced consensus versus our quantified view, or explicitly unavailable/aligned; do not presume mispricing
   **Our Call** — direction, price target, implied upside, primary driver (2-3 sentences)
-  **Catalyst Path** — 2-3 specific dated events that close the gap
-6+ dollar amounts, 3+ growth rates. Dense source tags. 2 sidenotes.`,
+  **Catalyst Path** — source-confirmed events or explicitly estimated monitoring windows; timing may remain unresolved
+Use supported figures and source tags only. Include sidenotes only when supported.`,
       `Write the EXECUTIVE SUMMARY for ${r.ticker}. Use bold sub-headings. 500-600 words.\n\n${userWithFoundation}`,
       { max_tokens: 2200, temperature: 0.5, timeoutMs: 65_000 }
     ),
@@ -543,7 +546,7 @@ Then 1-2 sentences of color per segment: key products, customers, competitive po
       ai, PRIMARY_MODEL,
       voiceWithSector + `
 
-OUTPUT: 500-600 words on what the MARKET currently prices. No heading. Cover: consensus EPS path year-by-year, current P/E or EV/EBITDA or EV/Sales, stock performance 1Y/3Y/5Y, analyst rating mix (Buy/Hold/Sell count), narrative the Street has settled on. Tag [Consensus]/[Market]/[Estimated]. 1-2 sidenotes.`,
+OUTPUT: Up to 500-600 words on what the MARKET currently prices. No heading. Include a consensus EPS path, valuation, stock performance and aggregate rating mix only when the supplied evidence contains those fields with dates. Label missing inputs unavailable. A filing is not a consensus source. Use actual source tags; assumptions remain estimated.`,
       `Write THE SITUATION section for ${r.ticker}.\n\n${userWithFoundation}`,
       { max_tokens: 2200, temperature: 0.5, timeoutMs: 65_000 }
     ),
@@ -551,7 +554,7 @@ OUTPUT: 500-600 words on what the MARKET currently prices. No heading. Cover: co
       ai, PRIMARY_MODEL,
       voiceWithSector + `
 
-OUTPUT: 500-600 words on what's MISPRICED. No heading. Specific numerical gap: consensus FY26E EPS X vs our Y. Reference specific 10-K material the market is discounting (guidance commentary, segment disclosures, capex trajectory). 2 sidenotes.`,
+OUTPUT: Up to 500-600 words testing whether there is a differentiated view. Compare the same sourced metric and fiscal period against a stated house assumption, with units and arithmetic. If values align, state aligned; if consensus is absent, state unavailable. Use the bear case and source material to challenge the thesis rather than presume the market is wrong.`,
       `Write THE COMPLICATION section for ${r.ticker}.\n\n${userWithFoundation}`,
       { max_tokens: 2200, temperature: 0.5, timeoutMs: 65_000 }
     ),
@@ -591,9 +594,9 @@ OUTPUT: 500-700 words. No heading. Structure:
 
 **Scenario Analysis** — markdown table:
 | Scenario | Weight | Price | EPS | Multiple | Key Driver |
-| Base | 60% | $XXX | $X.XX | Xx | [one-line driver] |
-| Bull | 25% | $XXX | $X.XX | Xx | [one-line driver] |
-| Bear | 15% | $XXX | $X.XX | Xx | [one-line driver] |
+| Base | supplied assumption or unavailable | model output or unavailable | sourced estimate or unavailable | assumption or unavailable | supported driver |
+| Bull | supplied assumption or unavailable | model output or unavailable | sourced estimate or unavailable | assumption or unavailable | supported driver |
+| Bear | supplied assumption or unavailable | model output or unavailable | sourced estimate or unavailable | assumption or unavailable | supported driver |
 | **Weighted** | **100%** | **$XXX** | | | |
 
 Then 1 paragraph per scenario (3-4 sentences each): what assumptions drive it, what has to go right/wrong, what's the signpost.
@@ -616,7 +619,7 @@ Then 800-1000 words structured with **bold sub-headings** every 200 words:
 - **The Thesis** — 2-3 sentences stating the bull argument
 - **The Evidence** — specific numbers from 10-K: 3-year revenue trajectory, margin expansion, growth rates. Use bullet list for key metrics.
 - **Competitive Moat** — name 2-3 rivals, cite market share or revenue comparisons
-- **The Catalyst** — what event unlocks value, with a date
+- **The Catalyst** — a source-confirmed event/date or clearly estimated monitoring window; unknown timing remains unresolved
 
 15+ source tags. 3 sidenotes. Short paragraphs (3-4 sentences max).`,
     `Write the STRONGEST bull-case deep-dive for ${r.ticker}. Use bold sub-headings and bullet lists for data. 800-1000 words.\n\n${userWithFoundation}`,
@@ -645,8 +648,8 @@ OUTPUT FORMAT: 700-900 words of prose covering 4-5 specific risks. Each risk is 
     ai, PRIMARY_MODEL,
     voiceWithSector + `
 
-OUTPUT FORMAT: 600-800 words of prose listing 5-7 time-bound catalysts over the next 12-24 months. Each catalyst is a paragraph starting with a **bold date+event heading** like "**Q1 FY26 earnings · February 2026**". Include: what the event is, how it moves the stock (price delta), Street consensus vs our view, what would be a beat vs miss. 1-2 sidenotes [[SIDENOTE: ...]]. No preamble.`,
-    `Write the CATALYSTS section for ${r.ticker}. 5-7 time-bound events with specific calendar dates (e.g. "Q2 FY26 earnings · July 2026"). Each catalyst: what happens, price impact estimate, Street consensus vs our view. START IMMEDIATELY with the first catalyst heading — no introduction.\n\n${userWithFoundation}`,
+OUTPUT FORMAT: List only supported catalysts and explicit analyst monitoring windows. Use a bold event heading with confirmed date and source, estimated window with assumption basis, or timing unresolved. Do not fill a count or word quota. Price impact and beat/miss comparisons require model assumptions and sourced consensus; omit unavailable comparisons. Include an owner and falsifier for each next check. No preamble.`,
+    `Write the CATALYSTS section for ${r.ticker}. Only supported events, with date confirmation status and source; label any estimated timing and its basis. Never invent dates or consensus. Include model impact only when supported. START IMMEDIATELY with the first catalyst heading — no introduction.\n\n${userWithFoundation}`,
     { max_tokens: 2800, temperature: 0.55, timeoutMs: 80_000, minChars: 300 }
   ),
   ]);
@@ -767,7 +770,7 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
 
   // Targeted retry for critical "pending" sections — risks and catalysts are key conviction drivers
   const RISK_PROMPT = voiceWithSector + `\nOUTPUT FORMAT: 700-900 words covering 4-5 specific risks. Each risk = bold heading + paragraph with probability (low/medium/high), magnitude (EPS impact or multiple compression), warning signs to monitor, and historical precedent. 2 sidenotes [[SIDENOTE: ...]]. No preamble — start directly with the first risk heading.`;
-  const CATALYST_PROMPT = voiceWithSector + `\nOUTPUT FORMAT: 600-800 words listing 5-7 time-bound catalysts. Each catalyst = bold date+event heading (e.g. "**Q2 FY26 earnings · July 2026**") + paragraph with what event is, price delta estimate, Street consensus vs our view, beat vs miss scenario. 1-2 sidenotes [[SIDENOTE: ...]]. No preamble — start directly with the first catalyst heading.`;
+  const CATALYST_PROMPT = voiceWithSector + `\nOUTPUT FORMAT: Supported catalysts only, with confirmed source-backed date, explicitly estimated timing and basis, or timing unresolved. No invented date or count quota. Include a thesis falsifier and owned next-check date, distinguishing analyst review timing from company events. Missing consensus or modeled impacts remain unavailable.`;
 
   for (let attempt = 0; attempt < 2 && risksBody.length < 200; attempt++) {
     console.log(`[portal][${r.ticker}] Risks too short (${risksBody.length}), retry ${attempt + 1}...`);
@@ -787,7 +790,7 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
     const retryCats = await runModel(
       ai, PRIMARY_MODEL,
       CATALYST_PROMPT,
-      `Write the CATALYSTS section for ${r.ticker}. 5-7 time-bound events over the next 12-24 months. Include earnings dates, product launches, regulatory decisions, M&A timelines. Each with specific calendar date.\n\n${userWithFoundation}`,
+      `Write the CATALYSTS section for ${r.ticker}. Include only sourced events or explicitly estimated monitoring windows. A confirmed calendar date needs source evidence for that specific event; otherwise label estimated or unresolved. Do not invent a minimum number of events.\n\n${userWithFoundation}`,
       { max_tokens: 3000, temperature: 0.65 + attempt * 0.1, timeoutMs: 100_000, minChars: 300 }
     );
     if (retryCats && retryCats.trim().length > catalystsBody.length) {
