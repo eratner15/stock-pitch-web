@@ -66,7 +66,8 @@ export async function verifyMagicToken(
 
   if (!row) return null;
   if (row.used) return null;
-  if (new Date(row.expires_at).getTime() < Date.now()) return null;
+  const expiresAt = new Date(row.expires_at).getTime();
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
 
   // Mark as used atomically — if two requests race, only one wins
   const result = await db
@@ -179,7 +180,7 @@ export async function verifySession(
   try {
     const obj = JSON.parse(atob(payload)) as { u: string; e: string; x: number };
     if (!obj || typeof obj.u !== 'string' || typeof obj.x !== 'number') return null;
-    if (Date.now() > obj.x) return null;
+    if (!Number.isFinite(obj.x) || Date.now() >= obj.x) return null;
     return { id: obj.u, email: obj.e };
   } catch {
     return null;
