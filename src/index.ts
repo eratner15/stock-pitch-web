@@ -1730,7 +1730,7 @@ async function generatePortal(env: Env, jobId: string, ticker: string, quote: { 
     await setStep('researching', 'Fetching 10-K + 10-Q from EDGAR', 0);
     const research = await collectResearch({ ticker });
     if (!research.filing_10k_url) {
-      return fail(`Could not locate SEC 10-K for ${ticker}. EDGAR may not have this ticker, or it's foreign-listed. Try another symbol.`);
+      throw new Error(`Could not locate SEC 10-K for ${ticker}. Filing coverage is unavailable.`);
     }
 
     await setStep('writing', 'Forming thesis · drafting all 6 sections', 1);
@@ -1782,6 +1782,7 @@ async function generatePortal(env: Env, jobId: string, ticker: string, quote: { 
   } catch (err) {
     console.error('[portal] generation failed', err);
     await fail(String(err).slice(0, 500));
+    throw err;
   }
 }
 
