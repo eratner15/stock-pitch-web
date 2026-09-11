@@ -1,5 +1,7 @@
 export interface Holding {
   ticker: string | null;
+  exchange?: string;
+  securityId?: string;
   company: string;
   weight: number | null;
   currency: string | null;
@@ -61,8 +63,8 @@ export function validateSnapshot(input: any): Snapshot {
       (typeof h.ticker !== "string" || !tickerPattern.test(h.ticker))
     )
       throw new Error("Invalid holding ticker");
-    if (h.assetType === "equity" && !h.ticker)
-      throw new Error("Equity requires an identified ticker");
+    if(h.exchange!==undefined&&(typeof h.exchange!=='string'||!/^[A-Za-z0-9._-]{1,30}$/.test(h.exchange)))throw new Error('Invalid exchange');
+    if(h.securityId!==undefined&&(typeof h.securityId!=='string'||!h.securityId.trim()||h.securityId.length>160))throw new Error('Invalid security ID');
     if (
       h.weight !== null &&
       (typeof h.weight !== "number" ||
@@ -78,6 +80,8 @@ export function validateSnapshot(input: any): Snapshot {
       throw new Error("Invalid currency");
     return {
       ticker: h.ticker,
+      ...(h.exchange?{exchange:h.exchange.toUpperCase()}:{}),
+      ...(h.securityId?{securityId:h.securityId}:{}),
       company: h.company,
       weight: h.weight,
       currency: h.currency,
@@ -102,7 +106,8 @@ export function discover(snapshot: Snapshot, covered: Set<string>, query = "") {
     )
     .map((h) => ({
       ...h,
-      eligible: h.assetType === "equity" && !!h.ticker,
+      eligible: false,
+      requiresIdentityResolution: h.assetType === "equity" && !!h.ticker,
       coverage:
         h.ticker && covered.has(h.ticker)
           ? "Existing coverage"
@@ -114,7 +119,7 @@ export function discover(snapshot: Snapshot, covered: Set<string>, query = "") {
     }))
     .sort(
       (a, b) =>
-        Number(b.eligible) - Number(a.eligible) ||
+        Number(b.assetType==='equity') - Number(a.assetType==='equity') ||
         (b.weight ?? -1) - (a.weight ?? -1),
     );
 }

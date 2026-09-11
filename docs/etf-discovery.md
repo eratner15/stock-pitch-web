@@ -1,0 +1,9 @@
+# Dated ETF discovery
+
+The private workspace reuses durable normalized holdings imports. It does not claim a live or complete holdings feed. Provider, source URL, analyst-supplied full/partial/unknown coverage, asset class, nullable weight and date are preserved. The original ETF research repository remains unchanged; its 113 tests passed during this implementation.
+
+`GET /research/workspace/api/etfs/:id/candidates?offset=0` returns at most 100 source rows, dated registry resolutions and exclusion reasons. Only identified equities can hand off. Missing dates/symbols, ambiguous share classes/exchanges, currency conflicts and duplicate securities (including explicit-ID/alias duplicates beyond the visible page) block handoff. Optional normalized holding `exchange` or `securityId` disambiguates; the registry still checks ticker and date. Cash and derivatives stay visible and excluded. More than 30 days is explicitly a review flag, not a live-freshness guarantee. Stale but identified historical candidates remain usable for discovery.
+
+Draft creation requires the exact immutable snapshot ID and source holding index, resolves again on the server and records stable company/security IDs plus `discovery_snapshot` provenance. A snapshot ticker alone cannot authorize a handoff. Imported holdings do not satisfy issuer-fundamentals or recommendation requirements. The browser offers only eligible rows, paginates and labels its search as page-local.
+
+Verification: `node --test tests/etf-candidates.test.mjs tests/workspace.test.mjs`; `npm run type-check`. The synthetic browser journey (`scripts/qa-etf-discovery.mjs`, fresh disposable `scripts/preview-workspace.mjs` on loopback) registers identity, imports mixed holdings, selects eligible row and checks stable draft identity/snapshot plus 1280/390px layout. No live entitlement, full provider coverage or deployment has been asserted.

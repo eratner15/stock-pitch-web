@@ -1,4 +1,8 @@
+import {resolvedETFCandidates} from '../lib/etf-candidates';
+import {revisionInputComparison} from '../lib/research-diff';
 import {identities} from './research-identities';
+import {delivery} from './research-delivery';
+import {modelRuns} from './research-model-runs';
 import {resolveResearchIdentity} from '../lib/research-identities';
 import {tracker} from './research-tracker';
 import { providerDiscovery } from './research-provider-discovery';
@@ -95,6 +99,8 @@ workspace.onError((err, c) => {
 });
 workspace.route("/api", evidence);
 workspace.route("/api/identities", identities);
+workspace.route("/api/delivery", delivery);
+workspace.route("/api", modelRuns);
 workspace.route("/api", providerDiscovery);
 workspace.get("/", (c) => c.html(renderWorkspace(c.get("role"))));
 workspace.get("/api/catalog", async (c) => {
@@ -135,6 +141,11 @@ workspace.get("/api/etfs", async (c) => {
     .bind(etf, etf)
     .all();
   return c.json({ snapshots: result.results });
+});
+workspace.get('/api/etfs/:id/candidates',async c=>{
+ const row=await c.env.DB.prepare('SELECT data_json FROM research_etf_snapshots WHERE id=?').bind(c.req.param('id')).first<{data_json:string}>();
+ if(!row)return c.json({error:'Snapshot not found'},404);
+ try{return c.json(await resolvedETFCandidates(c.env.DB,JSON.parse(row.data_json),{offset:Number(c.req.query('offset')||0)}));}catch{return c.json({error:'Invalid candidate page or unresolved snapshot metadata'},400);}
 });
 workspace.post("/api/etfs", async (c) => {
   let snapshot;
@@ -195,7 +206,8 @@ workspace.get("/api/revisions/:id", async (c) => {
         .bind(row.previous_id)
         .first()
     : null;
-  return c.json({ revision: row, previous });
+  const inputComparison=await revisionInputComparison(c.env.DB,String(row.id),50);
+  return c.json({ revision: row, previous, inputComparison });
 });
 workspace.post("/api/revisions", async (c) => {
   let b;
@@ -234,21 +246,13 @@ workspace.post("/api/revisions", async (c) => {
     return c.json({ error: "Invalid source URLs" }, 400);
   }
   if (b.snapshotId) {
-    const row = await c.env.DB.prepare(
-      "SELECT data_json FROM research_etf_snapshots WHERE id = ?",
-    )
-      .bind(b.snapshotId)
-      .first<{ data_json: string }>();
-    if (
-      !row ||
-      !JSON.parse(row.data_json).holdings.some(
-        (h: any) => h.ticker === b.ticker && h.assetType === "equity",
-      )
-    )
-      return c.json(
-        { error: "Company is not an identified equity in this snapshot" },
-        400,
-      );
+    const row=await c.env.DB.prepare('SELECT data_json FROM research_etf_snapshots WHERE id=?').bind(b.snapshotId).first<{data_json:string}>();
+    if(!row||!Number.isInteger(b.holdingIndex)||b.holdingIndex<0)return c.json({error:'A source holding row is required for ETF handoff'},400);
+    const snapshot=JSON.parse(row.data_json);
+    const selected=(await resolvedETFCandidates(c.env.DB,snapshot,{offset:b.holdingIndex,limit:1})).candidates[0];
+    if(!selected?.eligible||!selected.identity||selected.holding.ticker!==b.ticker)return c.json({error:'Only a resolved, nonduplicate equity holding can hand off to research'},409);
+    if(b.securityId&&b.securityId!==selected.identity.security_id||b.exchange&&(typeof b.exchange!=='string'||b.exchange.toUpperCase()!==selected.identity.exchange))return c.json({error:'Selected security differs from the source holding'},409);
+    b.securityId=selected.identity.security_id;b.exchange=selected.identity.exchange;b.asOf=snapshot.asOf;
   }
   const revisionId = id();
   const timestamp = now();
@@ -260,7 +264,7 @@ workspace.post("/api/revisions", async (c) => {
   const companyId=resolved?.company_id??`provisional-company:${revisionId}`;
   const documentId=resolved?`earnings-security:${resolved.security_id}`:`provisional-document:${revisionId}`;
   const previous=resolved?await c.env.DB.prepare("SELECT id FROM research_revisions WHERE document_id=? AND status='published' ORDER BY published_at DESC LIMIT 1").bind(documentId).first<{id:string}>():null;
-  const savedSources=JSON.stringify({urls:sources,text:b.sourceText,identity_request:identityRequest});
+  const savedSources=JSON.stringify({urls:sources,text:b.sourceText,identity_request:identityRequest,...(b.snapshotId?{discovery_snapshot:{snapshot_id:b.snapshotId,holding_index:b.holdingIndex,scope:"discovery_only"}}:{})});
   await c.env.DB.prepare(
     "INSERT OR IGNORE INTO research_revisions (id,document_id,company_id,ticker,previous_id,snapshot_id,title,source_json,created_by,created_at,revised_at,idempotency_key,security_id,identity_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   )
