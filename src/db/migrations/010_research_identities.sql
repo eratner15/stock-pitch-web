@@ -1,0 +1,12 @@
+-- Explicit analyst-supplied identity registry. Legacy rows remain unresolved.
+CREATE TABLE research_companies (company_id TEXT PRIMARY KEY, name TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE research_company_regulator_ids (company_id TEXT NOT NULL REFERENCES research_companies(company_id), regulator TEXT NOT NULL, regulator_id TEXT NOT NULL, PRIMARY KEY(regulator,regulator_id));
+CREATE TABLE research_securities (security_id TEXT PRIMARY KEY, company_id TEXT NOT NULL REFERENCES research_companies(company_id), exchange TEXT NOT NULL, share_class TEXT NOT NULL, currency TEXT, reporting_currency TEXT, adr_ratio REAL, verification_status TEXT NOT NULL DEFAULT 'analyst_supplied' CHECK(verification_status='analyst_supplied'), created_by TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE research_ticker_aliases (alias_id TEXT PRIMARY KEY, security_id TEXT NOT NULL REFERENCES research_securities(security_id), ticker TEXT NOT NULL, valid_from TEXT, valid_to TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX research_ticker_alias_lookup ON research_ticker_aliases(ticker,valid_from,valid_to);
+CREATE TABLE research_identity_events (event_id TEXT PRIMARY KEY, security_id TEXT NOT NULL REFERENCES research_securities(security_id), alias_id TEXT, actor_id TEXT NOT NULL, event_type TEXT NOT NULL, before_json TEXT, after_json TEXT NOT NULL, created_at TEXT NOT NULL);
+ALTER TABLE research_revisions ADD COLUMN security_id TEXT REFERENCES research_securities(security_id);
+ALTER TABLE research_revisions ADD COLUMN identity_status TEXT NOT NULL DEFAULT 'unresolved' CHECK(identity_status IN ('unresolved','analyst_supplied'));
+CREATE TRIGGER research_alias_no_overlap BEFORE INSERT ON research_ticker_aliases WHEN EXISTS (SELECT 1 FROM research_ticker_aliases a JOIN research_securities old ON old.security_id=a.security_id JOIN research_securities incoming ON incoming.security_id=NEW.security_id WHERE a.ticker=NEW.ticker AND old.exchange=incoming.exchange AND COALESCE(a.valid_from,'0000')<=COALESCE(NEW.valid_to,'9999') AND COALESCE(NEW.valid_from,'0000')<=COALESCE(a.valid_to,'9999')) BEGIN SELECT RAISE(ABORT,'Ticker alias overlaps on exchange'); END;
+CREATE TRIGGER research_identity_event_no_update BEFORE UPDATE ON research_identity_events BEGIN SELECT RAISE(ABORT,'Append-only identity audit'); END;
+CREATE TRIGGER research_identity_event_no_delete BEFORE DELETE ON research_identity_events BEGIN SELECT RAISE(ABORT,'Append-only identity audit'); END;
