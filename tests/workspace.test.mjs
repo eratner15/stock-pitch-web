@@ -31,12 +31,12 @@ before(async () => {
     ],
   });
   db = await mf.getD1Database("DB");
-  for (const file of ["005_research_desk.sql", "006_research_workspace.sql", "007_research_evidence.sql", "008_reviewed_package.sql"]) {
+  for (const file of ["005_research_desk.sql", "006_research_workspace.sql", "007_research_evidence.sql", "008_reviewed_package.sql", "010_research_identities.sql"]) {
     const sql = readFileSync("src/db/migrations/" + file, "utf8").replace(
       /--[^\n]*/g,
       "",
     );
-    for (const statement of sql.split(file.startsWith("007")?"\n":";").filter((s) => s.trim()))
+    for (const statement of sql.split(/^(007|010)/.test(file)?"\n":";").filter((s) => s.trim()))
       await db.prepare(statement).run();
   }
   await db
@@ -54,6 +54,8 @@ before(async () => {
   });
   app.route("/research/workspace", mod.workspace);
   ({ validateSnapshot, discover } = await bundle("src/lib/etf-discovery.ts"));
+  const {registerResearchIdentity}=await bundle('src/lib/research-identities.ts');
+  for(const ticker of ['ATRO','BWA'])await registerResearchIdentity(db,{company:{company_id:'fixture-company-'+ticker,name:'Synthetic '+ticker,regulator_ids:[]},security:{security_id:'security-'+ticker,company_id:'fixture-company-'+ticker,exchange:'XNYS',share_class:'common',currency:'USD',reporting_currency:'USD',adr_ratio:null,aliases:[{ticker,valid_from:null,valid_to:null}]}},'author');
 });
 after(async () => {
   await mf?.dispose();
@@ -85,7 +87,10 @@ function req(path, body, user = "author", extra = {}) {
 async function attachPackage(revisionId) {
  const row=await db.prepare('SELECT * FROM research_revisions WHERE id=?').bind(revisionId).first();
  const p=JSON.parse(readFileSync('tests/fixtures/research-package.json','utf8'));
- p.revision_id=revisionId;p.company_id=row.company_id;p.companies[0].company_id=row.company_id;p.securities[0].company_id=row.company_id;p.facts[0].company_id=row.company_id;
+ p.revision_id=revisionId;p.security_id=row.security_id;p.securities[0].security_id=row.security_id;p.facts[0].security_id=row.security_id;p.company_id=row.company_id;p.companies[0].company_id=row.company_id;p.securities[0].company_id=row.company_id;p.facts[0].company_id=row.company_id;
+ p.judgment={...p.judgment,portfolio_action:'not_assessed',limitations:'Synthetic fixture only',differentiated:false,consensus_unavailable_reason:'No consensus supplied',
+ decision_summary:{text:'Unrated synthetic fixture',fact_ids:['fact-revenue']},bear_case:{text:'Revenue durability is unproven',fact_ids:['fact-revenue']},expectations:{text:'Expectations unresolved',fact_ids:['fact-revenue']},variant_view:{text:'No differentiated view established',fact_ids:['fact-revenue']},
+ thesis_pillars:[{id:'demand',claim:{text:'Test revenue durability',fact_ids:['fact-revenue']},counter_evidence:{text:'Only one period available',fact_ids:['fact-revenue']},falsifier:'Two declines'}],dated_tests:[{id:'test',metric:'Revenue',fact_ids:['fact-revenue'],owner:'author',next_check:'2026-04-01',falsifier:'Two declines'}]};
  p.owner=row.created_by;p.workspace_version=row.version;p.body_checksum=createHash('sha256').update(row.body).digest('hex');
  const snapshotId=randomUUID();
  await db.prepare('INSERT INTO research_package_snapshots(snapshot_id,package_id,revision_id,workspace_version,body_checksum,package_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(snapshotId,p.package_id,revisionId,row.version,p.body_checksum,JSON.stringify(p),p.owner,p.created_at).run();
@@ -233,6 +238,7 @@ test("draft → independent review → gated publication; edits invalidate appro
     { env: { RESEARCH_PUBLICATION_ENABLED: "true" } },
   );
   assert.equal(published.status, 200);
+  assert.equal((await req("/api/revisions/"+id+"/resolve-identity",{version:8,exchange:"XNYS"})).status,403);
   const cat = await (await req("/api/catalog")).json();
   assert.equal(cat.documents.length, 1);
   assert.equal(cat.documents[0].canonicalUrl, "/research/published/" + id);
@@ -302,4 +308,26 @@ test("generation failure is visible and retries reuse the revision", async () =>
   assert.equal(row.status, "draft");
   assert.equal(row.reviewed_at, null);
   assert.equal(row.version, 5);
+});
+
+test('ambiguous aliases save unique provisional drafts and require author resolution',async()=>{
+ for(const [market,shareClass] of [['XNYS','common'],['XLON','ADR']]){
+  const registration={company:{company_id:'company-dual',name:'Synthetic Dual',regulator_ids:[]},security:{security_id:'dual-'+market,company_id:'company-dual',exchange:market,share_class:shareClass,currency:'USD',reporting_currency:'USD',adr_ratio:shareClass==='ADR'?2:null,aliases:[{ticker:'DUAL',valid_from:null,valid_to:null}]}};
+  assert.equal((await req('/api/identities/register',registration)).status,201);
+ }
+ const draft=key=>req('/api/revisions',{ticker:'DUAL',title:'Synthetic ambiguity',sources:['https://example.test/identity'],sourceText:'Synthetic only',idempotencyKey:key});
+ const first=await (await draft('ambiguous-draft-1')).json(),second=await (await draft('ambiguous-draft-2')).json();
+ assert.equal(first.resolution.status,'ambiguous');assert.equal(first.securityId,null);
+ const row1=(await (await req('/api/revisions/'+first.id)).json()).revision,row2=(await (await req('/api/revisions/'+second.id)).json()).revision;
+ assert.notEqual(row1.company_id,row2.company_id);assert.match(row1.company_id,/^provisional-company:/);assert.notEqual(row1.document_id,row2.document_id);
+ await req('/api/revisions/'+first.id+'/edit',{version:1,body:'Preserved synthetic body'});
+ assert.equal((await req('/api/revisions/'+first.id+'/submit',{version:2})).status,409);
+ assert.equal((await req('/api/revisions/'+first.id+'/resolve-identity',{version:2,exchange:'XLON'},'reviewer')).status,403);
+ assert.equal((await req('/api/revisions/'+first.id+'/resolve-identity',{version:2,exchange:'XLON',securityId:'dual-XNYS'})).status,409);
+ assert.equal((await req('/api/revisions/'+first.id+'/resolve-identity',{version:2,exchange:'XLON'})).status,200);
+ const resolved=(await (await req('/api/revisions/'+first.id)).json()).revision;
+ assert.equal(resolved.security_id,'dual-XLON');assert.equal(resolved.company_id,'company-dual');assert.equal(resolved.body,'Preserved synthetic body');assert.equal(resolved.version,3);assert.equal(resolved.reviewed_at,null);assert.equal(resolved.status,'draft');
+ assert.equal((await req('/api/revisions/'+first.id+'/resolve-identity',{version:2,exchange:'XNYS'})).status,409);
+ const explicit=await (await req('/api/revisions',{ticker:'DUAL',securityId:'dual-XNYS',title:'Synthetic class',sources:['https://example.test/identity'],sourceText:'Synthetic only',idempotencyKey:'explicit-class-draft'})).json();
+ assert.equal(explicit.securityId,'dual-XNYS');
 });

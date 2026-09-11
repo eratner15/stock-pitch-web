@@ -26,3 +26,11 @@ Artifacts are entirely synthetic. This verifies wiring and browser behavior, not
 live paid-model performance, deployed Access configuration, factual accuracy of
 stock research, or public-release authorization. Preview scripts are local tools
 and are not imported into or deployed with the Worker.
+
+Stable identity integration also verified (migration010): the browser registers
+its synthetic company/security through /api/identities/register before drafting;
+intake resolves the alias to that stable security. A second unregistered draft is
+provisional, then resolves through the UI after registry entry, preserving its
+saved body while incrementing the version and clearing approval. Unit tests cover
+cross-exchange ambiguity/share classes, unique provisional IDs, explicit security
+selection, author-only resolution, stale versions and published-edit denial.

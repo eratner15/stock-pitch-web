@@ -16,7 +16,12 @@ export async function federateCatalog(sources: {owner:string;fetch:()=>Promise<R
         if(typeof row.id!=='string')continue;
         documents.push({...row,id:`${owner}:${row.id}`,sourceOwner:owner,canonicalUrl:url.href});
       }
-      for(const row of data.currentViews)currentViews.push({...row,sourceOwner:owner});
+      for(const row of data.currentViews){
+        const url=new URL(row.canonicalUrl,'https://research.levincap.com');
+        if(url.protocol!=='https:'||url.hostname!=='research.levincap.com')continue;
+        const model=typeof row.modelUrl==='string'?new URL(row.modelUrl,'https://research.levincap.com'):null;
+        currentViews.push({...row,canonicalUrl:url.href,modelUrl:model?.protocol==='https:'?model.href:null,sourceOwner:owner});
+      }
       availability.push({owner,status:'available'});
     }catch {availability.push({owner,status:'invalid_response'});}
   }

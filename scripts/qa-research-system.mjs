@@ -13,13 +13,13 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  const endpoint='/research/workspace';
  const api=async(path,body)=>{const r=await context.request.fetch(origin+endpoint+path,{method:body?'POST':'GET',headers:body?{origin,'content-type':'application/json'}:{},...(body?{data:body}:{})});const text=await r.text();assert.ok(r.ok(),path+' '+r.status()+' '+text);return JSON.parse(text);};
- await context.request.get(origin+'/__fixture/session?role=author');await page.goto(origin+endpoint);
+ await context.request.get(origin+'/__fixture/session?role=author');const registered=JSON.parse(readFileSync('tests/fixtures/research-package.json','utf8'));await api('/api/identities/register',{company:registered.companies[0],security:registered.securities[0]});await page.goto(origin+endpoint);
  await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('Catalog loaded'));
  assert.ok((await page.locator('#documents').textContent()).includes('Synthetic legacy fixture'));
  await page.locator('#create-draft [name=ticker]').fill('FIXTURE');await page.locator('#create-draft [name=title]').fill('Synthetic browser research QA');
  await page.locator('#create-draft [name=sources]').fill('https://example.test/earnings');await page.locator('#create-draft [name=sourceText]').fill('Synthetic filing fixture revenue USD 1,200 million. No real company or investment recommendation.');
  const created=page.waitForResponse(r=>r.url().endsWith('/api/revisions')&&r.request().method()==='POST');await page.locator('#create-draft button').click();const saved=await(await created).json();assert.ok(saved.id);
- const id=saved.id;
+ const id=saved.id;assert.equal(saved.identityStatus,'analyst_supplied');assert.equal(saved.securityId,'security-fixture');
  await page.locator('#editor').waitFor({state:'visible'});
  async function action(name,status){const response=page.waitForResponse(r=>r.url().endsWith('/'+id+'/'+name)&&r.request().method()==='POST');await page.locator('[data-action='+name+']').click();const r=await response;assert.equal(r.status(),200,await r.text());await page.waitForFunction(s=>document.querySelector('#revision-meta').textContent.startsWith(s+' ·'),status);}
  await action('generate','draft');
@@ -50,6 +50,14 @@ try{
  await page.locator('#refresh').click();await page.locator('[data-revision="'+empty.id+'"]').click();
  await page.waitForFunction(()=>document.querySelector('#package-preview').textContent.includes('No evidence package'));
  assert.equal((await page.locator('#tracker-view').textContent()).trim(),'');assert.equal(await page.locator('#tracker-download').isHidden(),true);
+ await page.locator('#body').fill('Preserve synthetic body while resolving identity');
+ const edited=page.waitForResponse(r=>r.url().endsWith('/'+empty.id+'/edit'));await page.locator('[data-action=edit]').click();assert.equal((await edited).status(),200);
+ await page.waitForFunction(()=>document.querySelector('#revision-meta').textContent.includes('version 2'));
+ await api('/api/identities/register',{company:{company_id:'company-empty',name:'Synthetic Empty',regulator_ids:[]},security:{...registered.securities[0],company_id:'company-empty',security_id:'security-empty',aliases:[{ticker:'EMPTY',valid_from:null,valid_to:null}]}});
+ const resolved=page.waitForResponse(r=>r.url().endsWith('/'+empty.id+'/resolve-identity'));await page.locator('#resolve-identity').click();assert.equal((await resolved).status(),200);
+ await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('Identity resolved'));
+ assert.equal(await page.locator('#body').inputValue(),'Preserve synthetic body while resolving identity');
+ const identityRow=(await api('/api/revisions/'+empty.id)).revision;assert.equal(identityRow.security_id,'security-empty');assert.equal(identityRow.version,3);assert.equal(identityRow.reviewed_at,null);
  assert.deepEqual(errors,[]);await anonymous.close();
- const report={status:'passed',worker:'actual bundled Worker',identity:'signed synthetic sessions',sourceAndPackage:'actual authenticated endpoints',generation:'synthetic Durable Object only',trackerCSV:true,stalePackageCleared:true,unsavedEditRejected:true,independentApproval:true,publicThenWithdrawn:true,desktopWidth:1280,mobileWidth:390,browserErrors:errors};writeFileSync(out+'/report.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+ const report={status:'passed',worker:'actual bundled Worker',identity:'signed synthetic sessions',sourceAndPackage:'actual authenticated endpoints',generation:'synthetic Durable Object only',identityRegistration:true,resolvedIntake:true,provisionalResolution:true,trackerCSV:true,stalePackageCleared:true,unsavedEditRejected:true,independentApproval:true,publicThenWithdrawn:true,desktopWidth:1280,mobileWidth:390,browserErrors:errors};writeFileSync(out+'/report.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }finally{await browser.close();}

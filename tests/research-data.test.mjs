@@ -10,9 +10,10 @@ async function load(file){const r=await build({entryPoints:[file],bundle:true,wr
 before(async()=>{
  [contract,facts,sources,verifier]=await Promise.all(['research-package','financial-facts','research-sources','improve/fact-verify'].map(f=>load('src/lib/'+f+'.ts')));
  mf=new Miniflare({modules:true,script:'export default {fetch(){return new Response("test")}}',compatibilityDate:'2026-04-10',d1Databases:['DB']});db=await mf.getD1Database('DB');
- for(const file of ['006_research_workspace.sql','007_research_evidence.sql']) { const sql=readFileSync('src/db/migrations/'+file,'utf8').replace(/--[^\n]*/g,''); for(const statement of sql.split(file.startsWith('007')?'\n':';').filter(s=>s.trim())) await db.prepare(statement).run(); }
+ for(const file of ['006_research_workspace.sql','007_research_evidence.sql','010_research_identities.sql']) { const sql=readFileSync('src/db/migrations/'+file,'utf8').replace(/--[^\n]*/g,''); for(const statement of sql.split(/^(007|010)/.test(file)?'\n':';').filter(s=>s.trim())) await db.prepare(statement).run(); }
  await db.prepare("INSERT INTO research_members(user_id,role) VALUES ('author','analyst')").run();
- await db.prepare("INSERT INTO research_revisions(id,document_id,company_id,ticker,title,source_json,body,created_by,created_at,revised_at,idempotency_key) VALUES ('revision-fixture','doc','company-fixture','FIXTURE','Synthetic','[]','Synthetic draft','author','2026-01-01','2026-01-01','fixture')").run();
+ const {registerResearchIdentity}=await load('src/lib/research-identities.ts');await registerResearchIdentity(db,{company:fixture.companies[0],security:fixture.securities[0]},'author');
+ await db.prepare("INSERT INTO research_revisions(id,document_id,company_id,ticker,title,source_json,body,created_by,created_at,revised_at,idempotency_key,security_id,identity_status) VALUES ('revision-fixture','doc','company-fixture','FIXTURE','Synthetic','[]','Synthetic draft','author','2026-01-01','2026-01-01','fixture','security-fixture','analyst_supplied')").run();
  const {workspace}=await load('src/routes/research-workspace.ts');const {Hono}=await import('hono');app=new Hono();app.use('*',async(c,next)=>{c.set('user',c.req.header('x-user')?{id:c.req.header('x-user'),email:'synthetic@example.test'}:null);await next();});app.route('/workspace',workspace);
 });
 after(async()=>{await mf?.dispose();});

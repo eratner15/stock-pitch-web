@@ -1,3 +1,7 @@
+import {identities} from './research-identities';
+import {resolveResearchIdentity} from '../lib/research-identities';
+import {tracker} from './research-tracker';
+import { providerDiscovery } from './research-provider-discovery';
 import { federateCatalog } from '../lib/catalog-federation';
 import { packageForReview } from '../lib/research-review';
 import { evidence } from './research-evidence';
@@ -10,6 +14,10 @@ import {
 import { renderWorkspace } from "../pages/research-workspace";
 type Env = {
   DB: D1Database;
+  SEC_USER_AGENT?: string;
+  FMP_API_KEY?: string;
+  FRED_API_KEY?: string;
+  LEVY_PASSWORD?: string;
   WorkflowAgent: DurableObjectNamespace;
   RESEARCH_CATALOG?: Fetcher;
   RESEARCH_LEGACY?: Fetcher;
@@ -86,6 +94,8 @@ workspace.onError((err, c) => {
   );
 });
 workspace.route("/api", evidence);
+workspace.route("/api/identities", identities);
+workspace.route("/api", providerDiscovery);
 workspace.get("/", (c) => c.html(renderWorkspace(c.get("role"))));
 workspace.get("/api/catalog", async (c) => {
   const catalog = await federateCatalog([
@@ -240,17 +250,19 @@ workspace.post("/api/revisions", async (c) => {
         400,
       );
   }
-  const companyId = `company:${b.ticker}`;
-  const documentId = `earnings:${b.ticker}`;
-  const previous = await c.env.DB.prepare(
-    "SELECT id FROM research_revisions WHERE document_id = ? AND status = 'published' ORDER BY published_at DESC LIMIT 1",
-  )
-    .bind(documentId)
-    .first<{ id: string }>();
   const revisionId = id();
   const timestamp = now();
+  const identityRequest = {ticker:b.ticker,asOf:b.asOf||timestamp.slice(0,10),...(b.exchange?{exchange:b.exchange}:{}),...(b.securityId?{securityId:b.securityId}:{})};
+  let resolution;
+  try { resolution=await resolveResearchIdentity(c.env.DB,identityRequest); }
+  catch { return c.json({error:'Invalid identity selection: use a ticker, optional exchange/security and ISO as-of date'},400); }
+  const resolved=resolution.status==='resolved'?resolution.identity:null;
+  const companyId=resolved?.company_id??`provisional-company:${revisionId}`;
+  const documentId=resolved?`earnings-security:${resolved.security_id}`:`provisional-document:${revisionId}`;
+  const previous=resolved?await c.env.DB.prepare("SELECT id FROM research_revisions WHERE document_id=? AND status='published' ORDER BY published_at DESC LIMIT 1").bind(documentId).first<{id:string}>():null;
+  const savedSources=JSON.stringify({urls:sources,text:b.sourceText,identity_request:identityRequest});
   await c.env.DB.prepare(
-    "INSERT OR IGNORE INTO research_revisions (id,document_id,company_id,ticker,previous_id,snapshot_id,title,source_json,created_by,created_at,revised_at,idempotency_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    "INSERT OR IGNORE INTO research_revisions (id,document_id,company_id,ticker,previous_id,snapshot_id,title,source_json,created_by,created_at,revised_at,idempotency_key,security_id,identity_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
   )
     .bind(
       revisionId,
@@ -260,30 +272,31 @@ workspace.post("/api/revisions", async (c) => {
       previous?.id || null,
       b.snapshotId || null,
       b.title,
-      JSON.stringify({ urls: sources, text: b.sourceText }),
+      savedSources,
       c.get("user")!.id,
       timestamp,
       timestamp,
       b.idempotencyKey,
+      resolved?.security_id??null,
+      resolved?"analyst_supplied":"unresolved",
     )
     .run();
   const saved = await c.env.DB.prepare(
-    "SELECT id,ticker,title,source_json,snapshot_id FROM research_revisions WHERE created_by = ? AND idempotency_key = ?",
+    "SELECT id,ticker,title,source_json,snapshot_id,security_id,identity_status FROM research_revisions WHERE created_by = ? AND idempotency_key = ?",
   )
     .bind(c.get("user")!.id, b.idempotencyKey)
     .first<any>();
   if (
     saved.ticker !== b.ticker ||
     saved.title !== b.title ||
-    saved.source_json !==
-      JSON.stringify({ urls: sources, text: b.sourceText }) ||
+    saved.source_json !== savedSources ||
     saved.snapshot_id !== (b.snapshotId || null)
   )
     return c.json(
       { error: "Idempotency key already belongs to a different draft" },
       409,
     );
-  return c.json({ id: saved.id }, 201);
+  return c.json({ id: saved.id, securityId:saved.security_id, identityStatus:saved.identity_status, resolution }, 201);
 });
 workspace.post("/api/revisions/:id/:action", async (c) => {
   let b;
@@ -304,6 +317,18 @@ workspace.post("/api/revisions/:id/:action", async (c) => {
     return c.json({ error: "Revision changed; reload before continuing" }, 409);
   const actor = c.get("user")!.id;
   const timestamp = now();
+  if(action==='resolve-identity') {
+    if(b.body!==undefined&&b.body!==row.body)return c.json({error:'Save or discard visible body edits before resolving identity'},409);
+    if(row.created_by!==actor||!['draft','failed','review','approved'].includes(row.status))return c.json({error:'Only the author may resolve identity on an unpublished draft'},403);
+    let resolution;
+    try { resolution=await resolveResearchIdentity(c.env.DB,{ticker:row.ticker,asOf:b.asOf||timestamp.slice(0,10),...(b.exchange?{exchange:b.exchange}:{}),...(b.securityId?{securityId:b.securityId}:{})}); }
+    catch { return c.json({error:'Invalid identity selection'},400); }
+    if(resolution.status!=='resolved')return c.json({error:'Identity remains '+resolution.status,resolution},409);
+    const resolved=resolution.identity,documentId=`earnings-security:${resolved.security_id}`;
+    const previous=await c.env.DB.prepare("SELECT id FROM research_revisions WHERE document_id=? AND status='published' ORDER BY published_at DESC LIMIT 1").bind(documentId).first<{id:string}>();
+    const changed=await c.env.DB.prepare("UPDATE research_revisions SET company_id=?,security_id=?,identity_status='analyst_supplied',document_id=?,previous_id=?,status='draft',reviewed_by=NULL,reviewed_at=NULL,reviewed_snapshot_id=NULL,source_json=?,revised_at=?,version=version+1 WHERE id=? AND version=?").bind(resolved.company_id,resolved.security_id,documentId,previous?.id??null,JSON.stringify({...JSON.parse(row.source_json),identity_request:{ticker:row.ticker,exchange:resolved.exchange,securityId:resolved.security_id,asOf:b.asOf||timestamp.slice(0,10)}}),timestamp,revisionId,b.version).run();
+    return c.json({ok:!!changed.meta.changes,resolution},changed.meta.changes?200:409);
+  }
   if (action === "generate") {
     if (!["draft", "failed"].includes(row.status) || row.created_by !== actor)
       return c.json(
@@ -444,10 +469,12 @@ workspace.post("/api/revisions/:id/:action", async (c) => {
       403,
     );
   if (['submit','approve','publish'].includes(action) && b.body !== undefined && b.body !== row.body) return c.json({error:'Save or discard visible body edits before reviewing the stored revision'},409);
+  if(['submit','approve','publish'].includes(action)&&(!row.security_id||row.identity_status!=='analyst_supplied'))return c.json({error:'Resolve the company and security identity before package review'},409);
   let packageSnapshot: string | null = null;
   if (['submit', 'approve', 'publish'].includes(action)) {
     try {
       const selected = await packageForReview(c.env.DB, revisionId, row.body, b.packageSnapshotId, action === 'publish');
+      if(selected.package.company_id!==row.company_id||selected.package.security_id!==row.security_id)return c.json({error:'Evidence package belongs to a different company or security; attach a new matching snapshot'},409);
       packageSnapshot = selected.snapshotId;
       if (action === 'publish' && row.reviewed_snapshot_id !== packageSnapshot) return c.json({error:'Publication must use the independently approved evidence snapshot'},409);
     } catch (error) { return c.json({error:error instanceof Error ? error.message : 'Package review failed'},409); }
@@ -496,3 +523,5 @@ workspace.post("/api/revisions/:id/:action", async (c) => {
     result[0].meta.changes ? 200 : 409,
   );
 });
+
+workspace.route("/api/tracker", tracker);

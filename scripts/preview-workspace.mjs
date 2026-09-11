@@ -10,9 +10,9 @@ const bundle=await build({entryPoints:['src/index.ts'],bundle:true,write:false,f
 const legacy={id:'legacy-synthetic',ticker:'LEGACY',title:'Synthetic legacy fixture',sector:null,summary:null,canonicalUrl:'https://research.levincap.com/spread/LEGACY',visibility:'public',publicationStatus:'published',publishedAt:'2026-01-01',updatedAt:null,companyId:null,securityId:null};
 const mf=new Miniflare({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-04-10',compatibilityFlags:['nodejs_compat'],bindings:{SESSION_SECRET:secret,ANTHROPIC_API_KEY:'synthetic-unused',RESEARCH_PUBLICATION_ENABLED:'true'},d1Databases:['DB'],kvNamespaces:['REQUESTS'],durableObjects:{WorkflowAgent:'WorkflowAgent'},serviceBindings:{RESEARCH_CATALOG:async()=>Response.json({documents:[],currentViews:[],scope:'Synthetic QA catalog'}),RESEARCH_LEGACY:async()=>Response.json({documents:[legacy],currentViews:[]})}});
 const db=await mf.getD1Database('DB');
-for(const file of ['005_research_desk.sql','006_research_workspace.sql','007_research_evidence.sql','008_reviewed_package.sql','009_research_tracker.sql']){
+for(const file of ['005_research_desk.sql','006_research_workspace.sql','007_research_evidence.sql','008_reviewed_package.sql','009_research_tracker.sql','010_research_identities.sql']){
  const sql=readFileSync('src/db/migrations/'+file,'utf8').replace(/--[^\n]*/g,'');
- for(const statement of sql.split(/^(007|009)/.test(file)?'\n':';').filter(s=>s.trim()))await db.prepare(statement).run();
+ for(const statement of sql.split(/^(007|009|010)/.test(file)?'\n':';').filter(s=>s.trim()))await db.prepare(statement).run();
 }
 await db.prepare("INSERT INTO research_members(user_id,role) VALUES ('fixture-author','analyst'),('fixture-reviewer','reviewer')").run();
 const authBundle=await build({entryPoints:['src/lib/auth.ts'],bundle:true,write:false,format:'esm',platform:'node'});
