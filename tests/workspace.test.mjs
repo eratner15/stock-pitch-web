@@ -190,6 +190,7 @@ test("draft → independent review → gated publication; edits invalidate appro
     409,
   );
   assert.equal((await req('/api/revisions/'+id+'/submit',{version:2})).status,409);
+  assert.equal((await req("/api/delivery/"+id)).status,409);
   await attachPackage(id);
   assert.equal((await req('/api/revisions/'+id+'/submit',{version:2,body:'Unsaved text'})).status,409);
   assert.equal(
@@ -205,6 +206,16 @@ test("draft → independent review → gated publication; edits invalidate appro
       .status,
     200,
   );
+  assert.equal((await req('/api/delivery/'+id,undefined,null)).status,401);
+  assert.equal((await req('/api/delivery/'+id,undefined,'outsider')).status,403);
+  const exported=await req('/api/delivery/'+id);
+  assert.equal(exported.status,200);
+  assert.equal(exported.headers.get('cache-control'),'private, no-store');
+  const envelope=await exported.json();
+  assert.equal(envelope.snapshot_id,selectedPackages.get(id));
+  assert.equal(envelope.package_checksum,createHash('sha256').update(envelope.package_json).digest('hex'));
+  assert.equal(envelope.reviewed_by,'reviewer');
+  assert.equal(JSON.parse(envelope.package_json).status,'draft'); // original is immutable
   assert.equal(
     (
       await req(
@@ -227,6 +238,7 @@ test("draft → independent review → gated publication; edits invalidate appro
   let row = (await (await req("/api/revisions/" + id)).json()).revision;
   assert.equal(row.reviewed_at, null);
   assert.equal(row.status, "draft");
+  assert.equal((await req("/api/delivery/"+id)).status,409);
   assert.equal((await req('/api/revisions/'+id+'/submit',{version:5})).status,409);
   await attachPackage(id);
   await req("/api/revisions/" + id + "/submit", { version: 5 });
@@ -253,6 +265,7 @@ test("draft → independent review → gated publication; edits invalidate appro
   );
   await req("/api/revisions/" + id + "/withdraw", { version: 8 }, "reviewer");
   assert.equal((await (await req("/api/catalog")).json()).documents.length, 0);
+  assert.equal((await req("/api/delivery/"+id)).status,409);
 });
 test("generation failure is visible and retries reuse the revision", async () => {
   const { id } = await (
