@@ -1,0 +1,239 @@
+{
+  "kernel_sha256": "fc0f4c5b74ea995e70c7b2b5f012d8754548cf77cb53ac59144b759413e87e74",
+  "fixture": "synthetic industrial DCF: FCF10,10; wacc0.1; g0; shares10; debt20; cash5; minority0; assets0",
+  "valuation": {
+    "model_version": "fc0f4c5b74ea995e70c7b2b5f012d8754548cf77cb53ac59144b759413e87e74",
+    "input_hash": "1e59ab1a98fca691b3edf237aa211ef0b550da8ae1345508843f475429a714a6",
+    "output_id": "6956a6a843386d687c8325a827fd99689ae4f34dd9dbf80bd00953cf7434a803",
+    "security_id": "security-fixture",
+    "currency": "USD",
+    "enterprise_value": 99.99999999999999,
+    "equity_value": 84.99999999999999,
+    "price": 8.499999999999998,
+    "detail": {
+      "pv_fcf": 17.355371900826444,
+      "terminal_value_at_horizon": 100.0,
+      "pv_terminal": 82.64462809917354,
+      "terminal_contribution": 0.8264462809917356,
+      "discount_convention": "end-year unlevered FCF / WACC"
+    },
+    "warnings": [
+      "terminal value exceeds 75% of EV"
+    ],
+    "accounting_checks": "not applicable: valuation input only; use accounting_checks with statements",
+    "evidence": [
+      {
+        "input_id": "shares",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "debt",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "cash",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "minority_interest",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "nonoperating_assets",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "fcf.0",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "fcf.1",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "wacc",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      },
+      {
+        "input_id": "terminal_growth",
+        "kind": "assumption",
+        "source_id": "",
+        "locator": "",
+        "period": "synthetic",
+        "rationale": "Synthetic assumption"
+      }
+    ]
+  },
+  "sensitivity": {
+    "cells": [
+      [
+        {
+          "wacc": 0.09000000000000001,
+          "growth": -0.01,
+          "price": 8.591743119266052
+        },
+        {
+          "wacc": 0.09000000000000001,
+          "growth": -0.005,
+          "price": 9.074601641718974
+        },
+        {
+          "wacc": 0.09000000000000001,
+          "growth": 0.0,
+          "price": 9.611111111111109
+        },
+        {
+          "wacc": 0.09000000000000001,
+          "growth": 0.005,
+          "price": 10.2107393416082
+        },
+        {
+          "wacc": 0.09000000000000001,
+          "growth": 0.01,
+          "price": 10.885321100917427
+        }
+      ],
+      [
+        {
+          "wacc": 0.095,
+          "growth": -0.01,
+          "price": 8.110784953250706
+        },
+        {
+          "wacc": 0.095,
+          "growth": -0.005,
+          "price": 8.54566210045662
+        },
+        {
+          "wacc": 0.095,
+          "growth": 0.0,
+          "price": 9.026315789473685
+        },
+        {
+          "wacc": 0.095,
+          "growth": 0.005,
+          "price": 9.560375443937087
+        },
+        {
+          "wacc": 0.095,
+          "growth": 0.01,
+          "price": 10.15726564598442
+        }
+      ],
+      [
+        {
+          "wacc": 0.1,
+          "growth": -0.01,
+          "price": 7.673553719008263
+        },
+        {
+          "wacc": 0.1,
+          "growth": -0.005,
+          "price": 8.067099567099564
+        },
+        {
+          "wacc": 0.1,
+          "growth": 0.0,
+          "price": 8.499999999999998
+        },
+        {
+          "wacc": 0.1,
+          "growth": 0.005,
+          "price": 8.978468899521529
+        },
+        {
+          "wacc": 0.1,
+          "growth": 0.01,
+          "price": 9.510101010101007
+        }
+      ],
+      [
+        {
+          "wacc": 0.10500000000000001,
+          "growth": -0.01,
+          "price": 7.2743458587448355
+        },
+        {
+          "wacc": 0.10500000000000001,
+          "growth": -0.005,
+          "price": 7.632044426162072
+        },
+        {
+          "wacc": 0.10500000000000001,
+          "growth": 0.0,
+          "price": 8.023809523809522
+        },
+        {
+          "wacc": 0.10500000000000001,
+          "growth": 0.005,
+          "price": 8.454751131221718
+        },
+        {
+          "wacc": 0.10500000000000001,
+          "growth": 0.01,
+          "price": 8.931055013098355
+        }
+      ],
+      [
+        {
+          "wacc": 0.11,
+          "growth": -0.01,
+          "price": 6.908408408408407
+        },
+        {
+          "wacc": 0.11,
+          "growth": -0.005,
+          "price": 7.234821778300036
+        },
+        {
+          "wacc": 0.11,
+          "growth": 0.0,
+          "price": 7.590909090909089
+        },
+        {
+          "wacc": 0.11,
+          "growth": 0.005,
+          "price": 7.980909480909479
+        },
+        {
+          "wacc": 0.11,
+          "growth": 0.01,
+          "price": 8.409909909909908
+        }
+      ]
+    ],
+    "base_price": 8.499999999999998
+  }
+}
