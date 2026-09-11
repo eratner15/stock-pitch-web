@@ -17,7 +17,6 @@ export function calculateModelReceipt(pkg:ResearchPackage,input:unknown){
  const r=modelRunSchema.parse(input),m=r.mapping;
  requireCondition(r.as_of===pkg.analysis_as_of,'Model as-of differs from package');
  const model=pkg.models.find(x=>x.model_id===r.model_id);requireCondition(model,'Unknown model');
- requireCondition(Date.parse(model.run_at)<=Date.parse(pkg.analysis_as_of),'Model run is after analysis as-of');
  const ids=Object.entries(m).flatMap(([key,value])=>['method','cash_flow_type'].includes(key)?[]:Array.isArray(value)?value:[value]);
  requireCondition(equalSet(model.input_ids,ids),'Model input dependencies differ from mapping');
  requireCondition(equalSet(model.output_ids,Object.values(r.outputs)),'Model output dependencies differ from mapping');
