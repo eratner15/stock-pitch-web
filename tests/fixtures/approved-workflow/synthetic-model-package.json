@@ -1,0 +1,581 @@
+{
+  "schema_version": "1.0",
+  "package_id": "package-fixture",
+  "company_id": "company-fixture",
+  "security_id": "security-fixture",
+  "revision_id": "revision-fixture",
+  "parent_revision_id": null,
+  "workspace_version": 1,
+  "body_checksum": "6722d65bbdc13c3d1f320b92d4c26ab62ff08304ddfbf779cb6df89f229065a8",
+  "created_at": "2026-01-01T00:00:00Z",
+  "analysis_as_of": "2026-01-01T00:00:00Z",
+  "owner": "author",
+  "reviewer": null,
+  "status": "draft",
+  "visibility": "internal",
+  "workflow": "idea_brief",
+  "template_version": "1.0",
+  "model_version": "fc0f4c5b74ea995e70c7b2b5f012d8754548cf77cb53ac59144b759413e87e74",
+  "companies": [
+    {
+      "company_id": "company-fixture",
+      "name": "Synthetic Fixture Company",
+      "regulator_ids": [
+        {
+          "regulator": "synthetic",
+          "value": "test-only"
+        }
+      ]
+    }
+  ],
+  "securities": [
+    {
+      "security_id": "security-fixture",
+      "company_id": "company-fixture",
+      "exchange": "XNYS",
+      "share_class": "common",
+      "currency": "USD",
+      "reporting_currency": "USD",
+      "adr_ratio": null,
+      "aliases": [
+        {
+          "ticker": "FIXTURE",
+          "valid_from": null,
+          "valid_to": null
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "source_id": "source-synthetic",
+      "source_type": "filing",
+      "issuer_or_provider": "Synthetic Fixture Company",
+      "document_title": "Synthetic annual revenue fixture",
+      "uri_or_file": "fixture://annual",
+      "locator": {
+        "kind": "table",
+        "value": "Revenue table"
+      },
+      "published_at": null,
+      "retrieved_at": "2026-01-01T00:00:00Z",
+      "reporting_period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025,
+        "kind": "year",
+        "label": "FY25"
+      },
+      "checksum": "05f709ebd802a685e10ae395549c3523cda7635f7c2363689b9313a6359b859d",
+      "usage_rights": "public",
+      "rights_scope": "Synthetic test data only",
+      "rights_expiry": null,
+      "quality_status": "verified_source",
+      "mime_type": "text/plain"
+    }
+  ],
+  "facts": [
+    {
+      "fact_id": "fact-revenue",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "revenue",
+      "kind": "reported_actual",
+      "raw_value": "1,200",
+      "value": 1200,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31",
+        "fiscal_year": 2025,
+        "kind": "year",
+        "label": "FY25"
+      },
+      "segment": null,
+      "accounting_basis": "GAAP",
+      "source_id": "source-synthetic",
+      "locator": {
+        "kind": "table",
+        "value": "Revenue table"
+      },
+      "input_ids": [],
+      "rationale": null
+    },
+    {
+      "fact_id": "synthetic:shares",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "shares",
+      "kind": "analyst_assumption",
+      "raw_value": "10",
+      "value": 10,
+      "unit": "shares",
+      "scale": "million",
+      "currency": null,
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:debt",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "debt",
+      "kind": "analyst_assumption",
+      "raw_value": "20",
+      "value": 20,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:cash",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "cash",
+      "kind": "analyst_assumption",
+      "raw_value": "5",
+      "value": 5,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:minority_interest",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "minority_interest",
+      "kind": "analyst_assumption",
+      "raw_value": "0",
+      "value": 0,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:nonoperating_assets",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "nonoperating_assets",
+      "kind": "analyst_assumption",
+      "raw_value": "0",
+      "value": 0,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:fcf.0",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "fcf.0",
+      "kind": "analyst_assumption",
+      "raw_value": "10",
+      "value": 10,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": "2026-01-02",
+        "end": "2027-01-01",
+        "fiscal_year": 2027,
+        "kind": "forecast",
+        "label": "Synthetic annual forecast 1"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:fcf.1",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "fcf.1",
+      "kind": "analyst_assumption",
+      "raw_value": "10",
+      "value": 10,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": "2027-01-02",
+        "end": "2028-01-01",
+        "fiscal_year": 2028,
+        "kind": "forecast",
+        "label": "Synthetic annual forecast 2"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:wacc",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "wacc",
+      "kind": "analyst_assumption",
+      "raw_value": "0.1",
+      "value": 0.1,
+      "unit": "ratio",
+      "scale": "unit",
+      "currency": null,
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "synthetic:terminal_growth",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "terminal_growth",
+      "kind": "analyst_assumption",
+      "raw_value": "0",
+      "value": 0,
+      "unit": "ratio",
+      "scale": "unit",
+      "currency": null,
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [],
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "fact_id": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-enterprise_value",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "enterprise_value",
+      "kind": "computed",
+      "raw_value": null,
+      "value": 99.99999999999999,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [
+        "synthetic:shares",
+        "synthetic:debt",
+        "synthetic:cash",
+        "synthetic:minority_interest",
+        "synthetic:nonoperating_assets",
+        "synthetic:fcf.0",
+        "synthetic:fcf.1",
+        "synthetic:wacc",
+        "synthetic:terminal_growth"
+      ],
+      "rationale": "Deterministic valuation; see hashed model and input evidence; price is currency per share"
+    },
+    {
+      "fact_id": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-equity_value",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "equity_value",
+      "kind": "computed",
+      "raw_value": null,
+      "value": 84.99999999999999,
+      "unit": "currency",
+      "scale": "million",
+      "currency": "USD",
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [
+        "synthetic:shares",
+        "synthetic:debt",
+        "synthetic:cash",
+        "synthetic:minority_interest",
+        "synthetic:nonoperating_assets",
+        "synthetic:fcf.0",
+        "synthetic:fcf.1",
+        "synthetic:wacc",
+        "synthetic:terminal_growth"
+      ],
+      "rationale": "Deterministic valuation; see hashed model and input evidence; price is currency per share"
+    },
+    {
+      "fact_id": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-price",
+      "company_id": "company-fixture",
+      "security_id": "security-fixture",
+      "metric": "price",
+      "kind": "computed",
+      "raw_value": null,
+      "value": 8.499999999999998,
+      "unit": "currency",
+      "scale": "unit",
+      "currency": "USD",
+      "period": {
+        "start": null,
+        "end": "2026-01-01",
+        "fiscal_year": 2026,
+        "kind": "instant",
+        "label": "Synthetic valuation date"
+      },
+      "segment": null,
+      "accounting_basis": "nonfinancial",
+      "source_id": null,
+      "locator": null,
+      "input_ids": [
+        "synthetic:shares",
+        "synthetic:debt",
+        "synthetic:cash",
+        "synthetic:minority_interest",
+        "synthetic:nonoperating_assets",
+        "synthetic:fcf.0",
+        "synthetic:fcf.1",
+        "synthetic:wacc",
+        "synthetic:terminal_growth"
+      ],
+      "rationale": "Deterministic valuation; see hashed model and input evidence; price is currency per share"
+    }
+  ],
+  "assumptions": [
+    {
+      "assumption_id": "assumption:shares",
+      "fact_id": "synthetic:shares",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:debt",
+      "fact_id": "synthetic:debt",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:cash",
+      "fact_id": "synthetic:cash",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:minority_interest",
+      "fact_id": "synthetic:minority_interest",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:nonoperating_assets",
+      "fact_id": "synthetic:nonoperating_assets",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:fcf.0",
+      "fact_id": "synthetic:fcf.0",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:fcf.1",
+      "fact_id": "synthetic:fcf.1",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:wacc",
+      "fact_id": "synthetic:wacc",
+      "rationale": "Synthetic infrastructure test assumption"
+    },
+    {
+      "assumption_id": "assumption:terminal_growth",
+      "fact_id": "synthetic:terminal_growth",
+      "rationale": "Synthetic infrastructure test assumption"
+    }
+  ],
+  "models": [
+    {
+      "model_id": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62",
+      "revision_id": "revision-fixture",
+      "code_version": "fc0f4c5b74ea995e70c7b2b5f012d8754548cf77cb53ac59144b759413e87e74",
+      "input_ids": [
+        "synthetic:shares",
+        "synthetic:debt",
+        "synthetic:cash",
+        "synthetic:minority_interest",
+        "synthetic:nonoperating_assets",
+        "synthetic:fcf.0",
+        "synthetic:fcf.1",
+        "synthetic:wacc",
+        "synthetic:terminal_growth"
+      ],
+      "output_ids": [
+        "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-enterprise_value",
+        "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-equity_value",
+        "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-price"
+      ],
+      "run_at": "2026-01-01T00:00:00Z",
+      "qa_status": "passed"
+    }
+  ],
+  "artifacts": [],
+  "judgment": {
+    "stance": "unrated",
+    "confidence": null,
+    "valuation_horizon": "Two-year synthetic forecast; end-year DCF",
+    "decision_summary": {
+      "text": "Synthetic fixture only: the deterministic DCF produces $8.50 per share. This tests the pipeline and is not an investment recommendation.",
+      "fact_ids": [
+        "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-price"
+      ]
+    },
+    "what_changed": {
+      "text": "A versioned model now supplies the same valuation to every artifact.",
+      "fact_ids": [
+        "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-price"
+      ]
+    },
+    "bear_case": {
+      "text": "The synthetic terminal value drives most of enterprise value. Higher discount rates lower the result; no real issuer or trading conclusion is represented.",
+      "fact_ids": [
+        "synthetic:wacc",
+        "synthetic:terminal_growth"
+      ]
+    },
+    "expectations": {
+      "text": "No market or consensus evidence is included in this infrastructure fixture.",
+      "fact_ids": [
+        "fact-revenue"
+      ]
+    },
+    "variant_view": {
+      "text": "No differentiated stock view is established by this synthetic test.",
+      "fact_ids": [
+        "fact-revenue"
+      ]
+    },
+    "thesis_pillars": [
+      {
+        "id": "durability",
+        "claim": {
+          "text": "Test the assumed cash flow durability",
+          "fact_ids": [
+            "synthetic:fcf.0"
+          ]
+        },
+        "counter_evidence": {
+          "text": "The cash flows are assumptions, not real issuer results",
+          "fact_ids": [
+            "synthetic:fcf.0"
+          ]
+        },
+        "falsifier": "A sourced forecast would invalidate these placeholder cash flows"
+      }
+    ],
+    "catalysts": [],
+    "portfolio_action": "not_assessed",
+    "limitations": "Synthetic infrastructure fixture only; no actual issuer facts or investment judgment.",
+    "differentiated": false,
+    "consensus_unavailable_reason": "No real consensus included in synthetic fixture",
+    "dated_tests": [
+      {
+        "id": "cash-flow",
+        "metric": "Free cash flow",
+        "fact_ids": [
+          "synthetic:fcf.0"
+        ],
+        "owner": "author",
+        "next_check": "2026-04-01",
+        "falsifier": "Actual cash flow below the model assumption"
+      }
+    ]
+  }
+}

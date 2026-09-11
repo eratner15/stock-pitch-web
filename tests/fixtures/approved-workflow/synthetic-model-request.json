@@ -1,0 +1,26 @@
+{
+  "snapshot_id": "assigned-on-upload",
+  "model_id": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62",
+  "as_of": "2026-01-01T00:00:00Z",
+  "sector": "industrial",
+  "mapping": {
+    "method": "dcf",
+    "shares": "synthetic:shares",
+    "debt": "synthetic:debt",
+    "cash": "synthetic:cash",
+    "minority_interest": "synthetic:minority_interest",
+    "nonoperating_assets": "synthetic:nonoperating_assets",
+    "wacc": "synthetic:wacc",
+    "terminal_growth": "synthetic:terminal_growth",
+    "fcf": [
+      "synthetic:fcf.0",
+      "synthetic:fcf.1"
+    ],
+    "cash_flow_type": "unlevered"
+  },
+  "outputs": {
+    "enterprise_value": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-enterprise_value",
+    "equity_value": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-equity_value",
+    "price": "model-f380317d01e3cafc4fccbdc55f20281c466a22b8e312b142421794dcf02c5f62-price"
+  }
+}
