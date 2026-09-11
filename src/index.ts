@@ -1,3 +1,4 @@
+import { normalizeRating, assertPortalProvenance } from './lib/research-provenance';
 import { Hono } from 'hono';
 import { workspace, memberRole } from './routes/research-workspace';
 export { ResearchAgent } from './agents/research-agent';
@@ -1297,7 +1298,7 @@ app.post('/generate', async (c) => {
   try {
     const memoHtml = await c.env.REQUESTS.get(`portal:${ticker}:memo`);
     const contentJson = await c.env.REQUESTS.get(`portal:${ticker}:content`);
-    let summary = '', direction = 'long', rating = 'BUY', priceTarget = 0, sector = '';
+    let summary = '', direction = 'long', rating = 'Unrated', priceTarget = 0, sector = '';
     let totalWords = 0;
 
     if (contentJson) {
@@ -1307,7 +1308,7 @@ app.post('/generate', async (c) => {
         priceTarget = content.priceTargetNum || 0;
         sector = content.sector || '';
         direction = content.direction || 'long';
-        rating = content.rating || 'BUY';
+        rating = normalizeRating(content.rating);
       } catch {}
     }
 
@@ -1520,7 +1521,7 @@ app.post('/api/batch/next', async (c) => {
     // Run confidence pipeline inline
     const memoHtml = await c.env.REQUESTS.get(`portal:${next.ticker}:memo`);
     const contentJson = await c.env.REQUESTS.get(`portal:${next.ticker}:content`);
-    let summary = '', direction = 'long', rating = 'BUY', priceTarget = 0, sector = '';
+    let summary = '', direction = 'long', rating = 'Unrated', priceTarget = 0, sector = '';
     let criticScore = 50, verificationRate = 0.5, totalWords = 0, totalClaims = 0, verifiedClaims = 0;
 
     if (contentJson) {
@@ -1530,7 +1531,7 @@ app.post('/api/batch/next', async (c) => {
         priceTarget = content.priceTargetNum || 0;
         sector = content.sector || '';
         direction = content.direction || ((priceTarget > quote.price) ? 'long' : 'short');
-        rating = content.rating || (direction === 'long' ? 'BUY' : 'SELL');
+        rating = normalizeRating(content.rating);
       } catch {}
     }
 
@@ -1734,6 +1735,8 @@ async function generatePortal(env: Env, jobId: string, ticker: string, quote: { 
 
     await setStep('writing', 'Forming thesis · drafting all 6 sections', 1);
     const content = await writePortalContent(env.AI, research, { ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY });
+
+    assertPortalProvenance(content, research);
 
     // Fetch peer prices in parallel for the consensus page
     await setStep('writing', 'Pricing peer comps', 2);
@@ -1967,7 +1970,7 @@ export default {
         // Inline confidence scoring
         const memoHtml = await env.REQUESTS.get(`portal:${next.ticker}:memo`);
         let criticScore = 50, verificationRate = 0.5, totalWords = 0;
-        let summary = '', direction = 'long', rating = 'BUY', priceTarget = 0, sector = '';
+        let summary = '', direction = 'long', rating = 'Unrated', priceTarget = 0, sector = '';
         let totalClaims = 0, verifiedClaims = 0;
 
         const contentJson = await env.REQUESTS.get(`portal:${next.ticker}:content`);
@@ -1978,7 +1981,7 @@ export default {
             priceTarget = content.priceTargetNum || 0;
             sector = content.sector || '';
             direction = content.direction || ((priceTarget > quote.price) ? 'long' : 'short');
-            rating = content.rating || (direction === 'long' ? 'BUY' : 'SELL');
+            rating = normalizeRating(content.rating);
           } catch {}
         }
 

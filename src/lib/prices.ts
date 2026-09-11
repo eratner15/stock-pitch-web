@@ -1,14 +1,4 @@
-/**
- * Price data — tiered source strategy:
- *   1. D1 prices table (populated by cron; fastest, hits LCS book + recently looked up)
- *   2. Yahoo Finance (free, no key, works for any US ticker — server-side only)
- *   3. Deterministic mock (so UI works in dev/demo without network)
- *
- * LiquidityBook is NOT used for live submit lookups — its async positions API
- * has a ~100-second poll cycle and 1-concurrent-call limit. LB is better suited
- * to a nightly batch cache for LCS-book tickers, which is planned as a v2
- * enhancement (nightly cron syncs LB positions → writes to D1 prices table).
- */
+/** Live lookup uses Yahoo Finance; unavailable quotes return null. No synthetic fallback. */
 
 export interface PriceQuote {
   ticker: string;
@@ -94,7 +84,7 @@ async function fetchFromYahoo(ticker: string): Promise<PriceQuote | null> {
       };
     };
     const m = data.chart?.result?.[0]?.meta;
-    if (!m || typeof m.regularMarketPrice !== 'number') return null;
+    if (!m || typeof m.regularMarketPrice !== 'number' || !Number.isFinite(m.regularMarketPrice) || m.regularMarketPrice <= 0) return null;
     if (m.instrumentType && m.instrumentType !== 'EQUITY' && m.instrumentType !== 'ETF') {
       // Reject options, futures, crypto-style symbols etc. for now.
       return null;

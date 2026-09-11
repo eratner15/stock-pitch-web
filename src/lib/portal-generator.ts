@@ -17,6 +17,7 @@
  * MVP: memo + index + consensus pages (v1). Model/deck/questions come next.
  */
 
+import { normalizeRating, normalizeMetric } from './research-provenance';
 import skillMarkdown from '../skills/stock-pitch/SKILL.md';
 
 import { fetchPrice, fetchPriceHistory, type PriceQuote } from './prices';
@@ -952,7 +953,7 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
       }
       return (pt && r.quote && pt > r.quote.price) ? 'long' as const : 'short' as const;
     })(),
-    rating: String(consensusParsed?.rating || thesisParsed?.rating || 'BUY'),
+    rating: normalizeRating(consensusParsed?.rating, thesisParsed?.rating),
     sector: r.sector || '',
 
     sidenotes: allSidenotes,
@@ -969,11 +970,9 @@ OUTPUT FORMAT: FIRST line is "# " + 10-12 word H2 on competitive positioning. Th
         ebitdaMargin: String(p.ebitdaMargin || '—'),
         eps: normalizeNumbers(String(p.eps || '—')),
       })) : [],
-      keyMetrics: Array.isArray(financialsParsed?.keyMetrics) ? financialsParsed.keyMetrics.slice(0, 8).map((k: any) => ({
-        label: String(k.label || ''),
-        value: normalizeNumbers(String(k.value || '')),
-        source: String(k.source || '[10-K]'),
-      })).filter((k: any) => k.label) : [],
+      keyMetrics: Array.isArray(financialsParsed?.keyMetrics) ? financialsParsed.keyMetrics.slice(0, 8)
+        .map(normalizeMetric).filter((k: ReturnType<typeof normalizeMetric>): k is NonNullable<ReturnType<typeof normalizeMetric>> => k !== null)
+        .map((k: NonNullable<ReturnType<typeof normalizeMetric>>) => ({ ...k, value: normalizeNumbers(k.value) })) : [],
       dcfNarrative: normalizeNumbers(financialsParsed?.dcfNarrative || ''),
     },
     consensus: {

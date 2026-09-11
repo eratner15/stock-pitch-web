@@ -27,11 +27,9 @@ Both share the same backend. Worker detects host and renders the corresponding b
 - **Browser Rendering** — Puppeteer-in-Workers for OG PNG screenshots
 - **Cron** — nightly price refresh
 
-## Price sources (tiered)
+## Price sources
 
-1. D1 `prices` table (populated by cron; instant)
-2. Yahoo Finance (free, no key, server-side fetch)
-3. Deterministic mock (fallback so UX never breaks)
+Live lookups use Yahoo Finance. Failed, malformed, or nonpositive quotes return null; there is no mock fallback. D1 holds cached prices populated by cron. Callers must display unavailable data explicitly.
 
 LiquidityBook integration planned for v2 as a nightly batch cache for LCS-book tickers. LB's async positions API (~100s poll cycle, 1-concurrent-call limit) is unsuitable for live submit lookups.
 
@@ -65,7 +63,7 @@ npx wrangler deploy
 ### Optional secrets
 
 ```bash
-# For production use of FMP as a price fallback (otherwise falls through to Yahoo + mock)
+# Optional research provider access; fetchPrice does not use FMP as a fallback
 npx wrangler secret put FMP_API_KEY
 ```
 
@@ -91,3 +89,5 @@ Pro and White-Glove are v2 — Stripe integration not yet wired.
 ## License
 
 MIT. Built on Cloudflare Workers.
+
+Generated portal publication requires an explicit recognized rating and nonempty metric source labels. Missing or malformed metadata remains Unrated / Source unresolved, and a cited filing must be available. This minimum gate does not independently verify a model-provided source label or make the research publication-ready without further review.
