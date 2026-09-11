@@ -1,0 +1,11 @@
+-- Append-only thesis and catalyst history, linked to immutable package snapshots.
+CREATE TABLE research_tracker_items (tracker_id TEXT PRIMARY KEY, package_id TEXT NOT NULL, item_kind TEXT NOT NULL CHECK(item_kind IN ('claim','event')), item_key TEXT NOT NULL, UNIQUE(package_id,item_kind,item_key));
+CREATE TABLE research_tracker_snapshots (sequence INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id TEXT NOT NULL UNIQUE, tracker_id TEXT NOT NULL REFERENCES research_tracker_items(tracker_id), package_snapshot_id TEXT NOT NULL REFERENCES research_package_snapshots(snapshot_id), revision_id TEXT NOT NULL, item_json TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(tracker_id,package_snapshot_id));
+CREATE TABLE research_tracker_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE, tracker_id TEXT NOT NULL REFERENCES research_tracker_items(tracker_id), snapshot_id TEXT NOT NULL REFERENCES research_tracker_snapshots(snapshot_id), previous_event_id TEXT REFERENCES research_tracker_events(event_id), event_type TEXT NOT NULL CHECK(event_type IN ('observation','resolved','reopened','data_correction','judgment_change','supersession')), data_json TEXT NOT NULL, actor_id TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX research_tracker_event_head ON research_tracker_events(tracker_id,sequence DESC);
+CREATE TRIGGER research_tracker_item_no_update BEFORE UPDATE ON research_tracker_items BEGIN SELECT RAISE(ABORT,'Immutable tracker identity'); END;
+CREATE TRIGGER research_tracker_item_no_delete BEFORE DELETE ON research_tracker_items BEGIN SELECT RAISE(ABORT,'Immutable tracker identity'); END;
+CREATE TRIGGER research_tracker_snapshot_no_update BEFORE UPDATE ON research_tracker_snapshots BEGIN SELECT RAISE(ABORT,'Immutable tracker forecast'); END;
+CREATE TRIGGER research_tracker_snapshot_no_delete BEFORE DELETE ON research_tracker_snapshots BEGIN SELECT RAISE(ABORT,'Immutable tracker forecast'); END;
+CREATE TRIGGER research_tracker_event_no_update BEFORE UPDATE ON research_tracker_events BEGIN SELECT RAISE(ABORT,'Append-only tracker outcome'); END;
+CREATE TRIGGER research_tracker_event_no_delete BEFORE DELETE ON research_tracker_events BEGIN SELECT RAISE(ABORT,'Append-only tracker outcome'); END;
