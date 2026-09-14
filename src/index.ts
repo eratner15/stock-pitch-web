@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { workspace, memberRole } from './routes/research-workspace';
+import { publishedCatalog } from './lib/published-catalog';
 export { ResearchAgent } from './agents/research-agent';
 export { WorkflowAgent } from './agents/workflow-agent';
 import puppeteer from '@cloudflare/puppeteer';
@@ -192,6 +193,11 @@ app.route('/research/workspace', workspace);
 app.get('/research/workspace/', c => c.redirect('/research/workspace',308));
 
 // Only explicitly approved public revisions are readable without team access.
+app.get('/research/published-catalog', async c => {
+  c.header('cache-control', 'no-store');
+  try { return c.json({ documents: await publishedCatalog(c.env.DB) }); }
+  catch { return c.json({ error: 'Published catalog unavailable' }, 503); }
+});
 app.get('/research/published/:id', async c => {
   c.header('cache-control', 'no-store');
   const row = await c.env.DB.prepare("SELECT id,document_id,company_id,ticker,title,body,source_json,published_at,revised_at FROM research_revisions WHERE id = ? AND status = 'published' AND visibility = 'public'").bind(c.req.param('id')).first<any>();

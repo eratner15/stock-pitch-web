@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { build } from "esbuild";
 import { Miniflare } from "miniflare";
-let mf, db, app, validateSnapshot, discover;
+let mf, db, app, validateSnapshot, discover, publishedCatalog;
 async function bundle(entry) {
   const r = await build({
     entryPoints: [entry],
@@ -43,6 +43,7 @@ before(async () => {
       "INSERT INTO research_members (user_id,role) VALUES ('author','analyst'),('reviewer','reviewer')",
     )
     .run();
+  ({ publishedCatalog } = await bundle("src/lib/published-catalog.ts"));
   const mod = await bundle("src/routes/research-workspace.ts");
   const { Hono } = await import("hono");
   app = new Hono();
@@ -61,7 +62,7 @@ const env = () => ({
   DB: db,
   RESEARCH_CATALOG: {
     fetch: async () =>
-      Response.json({ documents: [], currentViews: [], scope: "test fixture" }),
+      Response.json({ documents: await publishedCatalog(db), currentViews: [], scope: "test fixture" }),
   },
 });
 function req(path, body, user = "author", extra = {}) {
@@ -219,7 +220,7 @@ test("draft → independent review → gated publication; edits invalidate appro
   assert.equal(published.status, 200);
   const cat = await (await req("/api/catalog")).json();
   assert.equal(cat.documents.length, 1);
-  assert.equal(cat.documents[0].canonicalUrl, "/research/published/" + id);
+  assert.equal(cat.documents[0].canonicalUrl, "https://research.levincap.com/research/published/" + id);
   assert.equal(
     (
       await req("/api/revisions/" + id + "/edit", {
@@ -287,3 +288,4 @@ test("generation failure is visible and retries reuse the revision", async () =>
   assert.equal(row.reviewed_at, null);
   assert.equal(row.version, 5);
 });
+

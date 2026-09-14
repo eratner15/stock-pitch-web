@@ -101,27 +101,8 @@ workspace.get("/api/catalog", async (c) => {
   for (const entry of [...catalog.documents, ...catalog.currentViews]) {
     entry.canonicalUrl = new URL(entry.canonicalUrl, 'https://research.levincap.com').href;
   }
-  const { results } = await c.env.DB.prepare(
-    "SELECT id,document_id,company_id,ticker,title,body,published_at,revised_at,reviewed_at FROM research_revisions WHERE status='published' AND visibility='public' ORDER BY published_at DESC",
-  ).all<any>();
-  catalog.documents.push(
-    ...results.map((r) => ({
-      id: r.id,
-      companyId: r.company_id,
-      ticker: r.ticker,
-      title: r.title,
-      summary: r.body.slice(0, 240),
-      sector: "Not recorded",
-      canonicalUrl: `/research/published/${r.id}`,
-      documentType: "earnings",
-      publicationStatus: "published",
-      visibility: "public",
-      publishedAt: r.published_at,
-      revisedAt: r.revised_at,
-      lastReviewedAt: r.reviewed_at,
-      relatedDocuments: [],
-    })),
-  );
+  // The catalog owner includes published workspace revisions. Never append
+  // a second copy locally; all readers use the same publication projection.
   return c.json(catalog);
 });
 workspace.get("/api/etfs", async (c) => {
@@ -494,3 +475,4 @@ workspace.post("/api/revisions/:id/:action", async (c) => {
     result[0].meta.changes ? 200 : 409,
   );
 });
+
