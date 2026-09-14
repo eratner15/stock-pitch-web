@@ -91,9 +91,11 @@ workspace.get("/api/catalog", async (c) => {
       },
       503,
     );
-  const res = await c.env.RESEARCH_CATALOG.fetch(
-    "https://research.levincap.com/research-catalog",
-  );
+  const incoming = new URL(c.req.url);
+  const catalogOrigin = incoming.hostname.endsWith('.workers.dev')
+    ? incoming.origin
+    : 'https://research.levincap.com';
+  const res = await c.env.RESEARCH_CATALOG.fetch(`${catalogOrigin}/research-catalog`);
   if (!res.ok) return c.json({ error: "Catalog unavailable" }, 502);
   const catalog = (await res.json()) as any;
   // Workspace aliases also run on bare/www levincap hosts. Editorial links
@@ -475,4 +477,3 @@ workspace.post("/api/revisions/:id/:action", async (c) => {
     result[0].meta.changes ? 200 : 409,
   );
 });
-
