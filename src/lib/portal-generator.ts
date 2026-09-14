@@ -434,7 +434,7 @@ ${researchCard}`;
         system: 'Return ONE JSON object, no markdown fence. Every financial number must include a source tag like [10-K].',
         messages: [{ role: 'user', content: `Produce FINANCIALS JSON for ${r.ticker} (${r.company}). Current price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"historical":[{"year":"FY23","revenue":"$X.XB","operatingIncome":"$X.XB","eps":"$X.XX"}],"projected":[{"year":"FY26E","revenue":"$X.XB","ebitdaMargin":"X%","eps":"$X.XX"}],"keyMetrics":[{"label":"Metric","value":"X","source":"[10-K]"}],"dcfNarrative":"80 words"}\n\n3 historical rows, 3 projected, 4-6 keyMetrics.\n\n10-K excerpt:\n${r.mda_excerpt.slice(0, 8000)}` }],
       });
-      const text = resp.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join('');
+      const text = resp.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('');
       if (text.length > 50) { finalFinancials = text; console.log(`[portal][${r.ticker}] Financials recovered via Anthropic (${text.length}c)`); }
     } catch (e) { console.error(`[portal][${r.ticker}] Anthropic financials fallback failed:`, e); }
   }
@@ -448,7 +448,7 @@ ${researchCard}`;
         system: 'Return ONE JSON object, no markdown fence.',
         messages: [{ role: 'user', content: `Produce CONSENSUS JSON for ${r.ticker} (${r.company}). Current price: ${r.quote ? '$'+r.quote.price.toFixed(2) : 'n/a'}.\n\nSchema: {"streetView":"60 words with [Consensus] tags","peerTickers":["TICKER1"],"peerNote":"80 words","ourPt":"$XXX — Y% upside","ptMethodology":"80 words"}\n\n4-6 peer tickers.\n\n10-K excerpt:\n${r.mda_excerpt.slice(0, 5000)}` }],
       });
-      const text = resp.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join('');
+      const text = resp.content.flatMap(b => b.type === 'text' ? [b.text] : []).join('');
       if (text.length > 50) { finalConsensus = text; console.log(`[portal][${r.ticker}] Consensus recovered via Anthropic (${text.length}c)`); }
     } catch (e) { console.error(`[portal][${r.ticker}] Anthropic consensus fallback failed:`, e); }
   }

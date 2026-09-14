@@ -1,0 +1,30 @@
+name: Deploy isolated workspace staging
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/research-workspace]
+    paths:
+      - .github/workflows/staging.yml
+      - scripts/deploy-staging.sh
+      - src/routes/research-workspace.ts
+concurrency:
+  group: research-staging-workspace
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: bash scripts/deploy-staging.sh
