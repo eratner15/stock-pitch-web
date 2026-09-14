@@ -6,6 +6,14 @@ set -euo pipefail
 stage_tmp_dir="$(mktemp -d)"
 stage_config="$PWD/wrangler.staging.generated.toml"
 trap 'rm -rf "$stage_tmp_dir"; rm -f "$stage_config"' EXIT
+stage_migrations="$stage_tmp_dir/migrations"
+mkdir -p "$stage_migrations"
+# schema.sql already contains the Stripe column from migration 002. Apply only
+# later additive migrations so a fresh staging database and a rerun are both safe.
+cp src/db/migrations/003_portal_jobs.sql "$stage_migrations/"
+cp src/db/migrations/004_portals_and_feedback.sql "$stage_migrations/"
+cp src/db/migrations/005_research_desk.sql "$stage_migrations/"
+cp src/db/migrations/006_research_workspace.sql "$stage_migrations/"
 
 if ! npx wrangler deployments list --name lcs-portfolio-intel-staging >/dev/null 2>&1; then
   printf '%s\n' 'export default {fetch(){return new Response("Staging catalog is starting",{status:503})}}' > "$stage_tmp_dir/placeholder.mjs"
@@ -53,7 +61,7 @@ id = "$kv_id"
 binding = "DB"
 database_name = "$db_name"
 database_id = "$db_id"
-migrations_dir = "src/db/migrations"
+migrations_dir = "$stage_migrations"
 [ai]
 binding = "AI"
 [browser]
@@ -83,6 +91,6 @@ openssl rand -hex 32 | npx wrangler secret put SESSION_SECRET --config "$stage_c
 
 subdomain="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).result.subdomain))')"
 stage_url="https://stock-pitch-web-staging.$subdomain.workers.dev"
-test "$(curl -fsS -o /dev/null -w '%{http_code}' "$stage_url/research/workspace")" = "401"
-curl -fsS "$stage_url/research/published-catalog" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.documents))process.exit(1)})'
+test "$(curl -sS --retry 8 --retry-delay 2 --retry-all-errors -o /dev/null -w '%{http_code}' "$stage_url/research/workspace")" = "401"
+curl -fsS --retry 8 --retry-delay 2 --retry-all-errors "$stage_url/research/published-catalog" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const x=JSON.parse(s);if(!Array.isArray(x.documents))process.exit(1)})'
 printf 'STAGING_URL=%s\n' "$stage_url"
